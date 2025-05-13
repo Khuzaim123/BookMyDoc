@@ -4,8 +4,15 @@ import 'package:flutter/material.dart';
 
 class CustomCard extends StatelessWidget {
   final Widget child;
+  final VoidCallback? onTap;
+  final EdgeInsetsGeometry? margin;
 
-  const CustomCard({super.key, required this.child});
+  const CustomCard({
+    super.key, 
+    required this.child,
+    this.onTap,
+    this.margin,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -15,9 +22,14 @@ class CustomCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(AppSizes.cardRadius),
       ),
       color: Colors.white,
-      child: Padding(
-        padding: const EdgeInsets.all(AppSizes.defaultPadding),
-        child: child,
+      margin: margin,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(AppSizes.cardRadius),
+        child: Padding(
+          padding: const EdgeInsets.all(AppSizes.defaultPadding),
+          child: child,
+        ),
       ),
     );
   }

@@ -20,8 +20,8 @@ class Patient {
 
   factory Patient.fromJson(Map<String, dynamic> json) => Patient(
     id: json['id'] as String,
-    name: json['name'] as String,
-    email: json['email'] as String,
-    phone: json['phone'] as String,
+    name: json['name'] as String? ?? '', // Default to empty string if null
+    email: json['email'] as String? ?? '', // Default to empty string if null
+    phone: json['phone'] as String? ?? '', // Default to empty string if null
   );
 }

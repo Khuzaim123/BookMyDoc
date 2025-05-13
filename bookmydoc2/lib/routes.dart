@@ -18,6 +18,11 @@ import 'package:bookmydoc2/screens/messages_list_screen.dart';
 import 'package:bookmydoc2/screens/profile_management_screen.dart';
 import 'package:bookmydoc2/screens/search_screen.dart';
 import 'package:bookmydoc2/screens/sign_up_screen.dart';
+import 'package:bookmydoc2/screens/edit_appointment_screen.dart';
+import 'package:bookmydoc2/models/appointment.dart';
+import 'package:bookmydoc2/screens/appointment_detail_screen.dart';
+import 'package:bookmydoc2/screens/change_password_screen.dart';
+import 'package:bookmydoc2/screens/about_us_screen.dart';
 
 class RouteNames {
   static const String signUp = '/signup';
@@ -32,6 +37,9 @@ class RouteNames {
   static const String profileManagement = '/profile-management';
   static const String healthRecords = '/health-records';
   static const String doctorProfileView = '/doctor-profile-view';
+  static const String editAppointment = '/edit-appointment';
+  static const String appointmentDetail = '/appointment-detail';
+  static const String changePassword = '/change-password';
 
   static const String doctorHome = '/doctor-home';
   static const String doctorAppointments = '/doctor-appointments';
@@ -41,6 +49,7 @@ class RouteNames {
   static const String doctorPatientRecords = '/doctor-patient-records';
   static const String doctorProfile = '/doctor-profile-screen';
   static const String doctorEarnings = '/doctor-earnings';
+  static const String aboutUs = '/about-us';
 }
 
 Route<dynamic> generateRoute(RouteSettings settings) {
@@ -57,25 +66,27 @@ Route<dynamic> generateRoute(RouteSettings settings) {
     case RouteNames.search:
       return MaterialPageRoute(builder: (_) => const SearchScreen());
     case RouteNames.doctorProfileView:
+      assert(args != null && args.containsKey('id'), 'doctorId is required');
       return MaterialPageRoute(
-        builder: (_) => DoctorProfileScreen(
-          doctorId: args?["id"] ?? '',
-          isOwnProfile: false,
-        ),
+        builder:
+            (_) =>
+                DoctorProfileScreen(doctorId: args!["id"], isOwnProfile: false),
       );
     case RouteNames.appointmentBooking:
+      assert(args != null && args.containsKey('id'), 'doctorId is required');
       return MaterialPageRoute(
-        builder: (_) => AppointmentBookingScreen(
-          doctorId: args?["id"] ?? '',
-        ),
+        builder: (_) => AppointmentBookingScreen(doctorId: args!["id"]),
       );
     case RouteNames.appointments:
       return MaterialPageRoute(builder: (_) => AppointmentsScreen());
     case RouteNames.message:
+      assert(args != null && args.containsKey('id'), 'doctorId is required');
       return MaterialPageRoute(
-        builder: (_) => MessageScreen(
-          doctorId: args?["id"] ?? '',
-        ),
+        builder:
+            (_) => MessageScreen(
+              doctorId: args!['id'],
+              doctorName: args['name'] ?? 'Dr. Unknown',
+            ),
       );
     case RouteNames.messagesList:
       return MaterialPageRoute(builder: (_) => MessagesListScreen());
@@ -86,37 +97,77 @@ Route<dynamic> generateRoute(RouteSettings settings) {
     case RouteNames.doctorHome:
       return MaterialPageRoute(builder: (_) => DoctorHomeScreen());
     case RouteNames.doctorAppointments:
-      return MaterialPageRoute(builder: (_) => const DoctorAppointmentsScreen());
+      return MaterialPageRoute(
+        builder: (_) => const DoctorAppointmentsScreen(),
+      );
     case RouteNames.doctorAvailability:
-      return MaterialPageRoute(builder: (_) => const DoctorAvailabilityScreen());
+      assert(args != null && args.containsKey('id'), 'doctorId is required');
+      return MaterialPageRoute(
+        builder: (_) => DoctorAvailabilityScreen(doctorId: args!['id']),
+      );
     case RouteNames.doctorMessagesList:
       return MaterialPageRoute(builder: (_) => DoctorMessagesListScreen());
     case RouteNames.doctorMessage:
+      assert(args != null && args.containsKey('id'), 'patientId is required');
       return MaterialPageRoute(
-        builder: (_) => DoctorMessageScreen(
-          patientId: args?["id"] ?? '',
-        ),
+        builder: (_) => DoctorMessageScreen(patientId: args!["id"]),
       );
     case RouteNames.doctorPatientRecords:
       return MaterialPageRoute(builder: (_) => DoctorPatientRecordsScreen());
     case RouteNames.doctorProfile:
+      assert(args != null && args.containsKey('id'), 'doctorId is required');
       return MaterialPageRoute(
-        builder: (_) => DoctorProfileScreen(
-          doctorId: args?["id"] ?? '',
-          isOwnProfile: true,
-        ),
+        builder:
+            (_) => DoctorProfileScreen(
+              doctorId: args!['id'],
+              isOwnProfile: args['isOwnProfile'] ?? true,
+            ),
       );
     case RouteNames.doctorEarnings:
       return MaterialPageRoute(builder: (_) => const DoctorEarningsScreen());
+    case RouteNames.editAppointment:
+      assert(
+        args != null && args.containsKey('appointment'),
+        'appointment is required',
+      );
+      final appointment = args!['appointment'] as Appointment;
+      return MaterialPageRoute(
+        builder: (_) => EditAppointmentScreen(appointment: appointment),
+      );
+    case RouteNames.appointmentDetail:
+      assert(
+        args != null &&
+            args.containsKey('appointment') &&
+            args.containsKey('isDoctor'),
+        'appointment and isDoctor are required',
+      );
+      final appointment = args!['appointment'] as Appointment;
+      final isDoctor = args['isDoctor'] as bool;
+      return MaterialPageRoute(
+        builder:
+            (_) => AppointmentDetailScreen(
+              appointment: appointment,
+              isDoctor: isDoctor,
+            ),
+      );
+    case RouteNames.changePassword:
+      return MaterialPageRoute(builder: (_) => ChangePasswordScreen());
+    case RouteNames.aboutUs:
+      return MaterialPageRoute(builder: (_) => AboutUsScreen());
     default:
       return MaterialPageRoute(
-        builder: (_) => Scaffold(
-          body: Center(child: Text('Page not found: \${settings.name}')),
-        ),
+        builder:
+            (_) => Scaffold(
+              body: Center(child: Text('Page not found: \\${settings.name}')),
+            ),
       );
   }
 }
 
-void navigateTo(BuildContext context, String routeName, [Map<String, dynamic>? args]) {
+void navigateTo(
+  BuildContext context,
+  String routeName, [
+  Map<String, dynamic>? args,
+]) {
   Navigator.pushNamed(context, routeName, arguments: args);
 }

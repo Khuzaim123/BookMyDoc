@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 class DoctorAvailability {
   final String id; // Unique availability ID
   final String doctorId;
@@ -16,8 +18,8 @@ class DoctorAvailability {
   Map<String, dynamic> toJson() => {
     'id': id,
     'doctorId': doctorId,
-    'startTime': startTime.toIso8601String(),
-    'endTime': endTime.toIso8601String(),
+    'startTime': startTime,
+    'endTime': endTime,
     'isBooked': isBooked,
   };
 
@@ -25,8 +27,8 @@ class DoctorAvailability {
       DoctorAvailability(
         id: json['id'] as String,
         doctorId: json['doctorId'] as String,
-        startTime: DateTime.parse(json['startTime'] as String),
-        endTime: DateTime.parse(json['endTime'] as String),
+        startTime: (json['startTime'] as Timestamp).toDate(),
+        endTime: (json['endTime'] as Timestamp).toDate(),
         isBooked: json['isBooked'] as bool,
       );
 }

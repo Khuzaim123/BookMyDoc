@@ -1,44 +1,36 @@
-import 'package:animate_do/animate_do.dart';
-import 'package:bookmydoc2/constants/colors.dart';
-import 'package:bookmydoc2/constants/sizes.dart';
-// import 'package:bookmydoc2/constants/strings.dart';
-import 'package:bookmydoc2/models/doctor.dart';
-import 'package:bookmydoc2/routes.dart';
-import 'package:bookmydoc2/widgets/custom_button.dart';
-import 'package:bookmydoc2/widgets/custom_text_field.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:animate_do/animate_do.dart';
+import '../models/doctor.dart';
+import '../models/reminder.dart';
+import '../constants/colors.dart';
+import '../constants/sizes.dart';
+import '../routes.dart';
+import '../widgets/custom_button.dart';
+import '../widgets/custom_card.dart';
 
 class DoctorProfileScreen extends StatefulWidget {
   final String? doctorId; // Made doctorId optional
   final bool isOwnProfile;
 
-  const DoctorProfileScreen({super.key, this.doctorId , this.isOwnProfile = true});
+  const DoctorProfileScreen({
+    super.key,
+    this.doctorId,
+    this.isOwnProfile = true,
+  });
 
   @override
   State<DoctorProfileScreen> createState() => _DoctorProfileScreenState();
 }
 
-class _DoctorProfileScreenState extends State<DoctorProfileScreen> {
+class _DoctorProfileScreenState extends State<DoctorProfileScreen>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
   bool _isEditing = false;
-
-  // Dummy data for the Doctor
-  final Doctor _doctor = Doctor(
-    id: 'doc1',
-    name: 'Dr. John Smith',
-    email: 'john@example.com',
-    specialty: 'Cardiologist',
-    qualifications: 'MD, PhD',
-    clinicAddress: '123 Heart St, City',
-    workingHours: {
-      'Monday': '9:00-17:00',
-      'Tuesday': '9:00-17:00',
-      'Wednesday': '9:00-17:00',
-      'Thursday': '9:00-17:00',
-      'Friday': '9:00-17:00',
-    },
-    commissionRate: 10.0,
-  );
+  bool _isLoading = true;
+  late Doctor _doctor;
 
   // Controllers for editable fields
   late TextEditingController _nameController;
@@ -48,35 +40,284 @@ class _DoctorProfileScreenState extends State<DoctorProfileScreen> {
   late TextEditingController _clinicAddressController;
   final Map<String, TextEditingController> _workingHoursControllers = {};
 
+  // For feedback tab
+  final TextEditingController _feedbackController = TextEditingController();
+
+  // For reminders tab
+  final List<Reminder> _reminders = [];
+
   @override
   void initState() {
     super.initState();
-    // If doctorId is provided, fetch the Doctor's data (simulated here)
-    // For now, we use the dummy _doctor data regardless of doctorId
-    _nameController = TextEditingController(text: _doctor.name);
-    _emailController = TextEditingController(text: _doctor.email);
-    _specialtyController = TextEditingController(text: _doctor.specialty);
-    _qualificationsController = TextEditingController(text: _doctor.qualifications);
-    _clinicAddressController = TextEditingController(text: _doctor.clinicAddress);
-    _doctor.workingHours.forEach((day, hours) {
-      _workingHoursControllers[day] = TextEditingController(text: hours);
-    });
+
+    // Initialize tab controller with appropriate number of tabs
+    _tabController = TabController(
+      length: widget.isOwnProfile ? 3 : 1, // 3 tabs for doctor, 1 for patient
+      vsync: this,
+    );
+
+    // Initialize controllers with empty values initially
+    _nameController = TextEditingController();
+    _emailController = TextEditingController();
+    _specialtyController = TextEditingController();
+    _qualificationsController = TextEditingController();
+    _clinicAddressController = TextEditingController();
+
+    // Fetch doctor data from Firestore
+    _fetchDoctorData();
+
+    // Fetch reminders if this is doctor's own profile
+    if (widget.isOwnProfile) {
+      _fetchReminders();
+    }
   }
 
   @override
   void dispose() {
+    _tabController.dispose();
     _nameController.dispose();
     _emailController.dispose();
     _specialtyController.dispose();
     _qualificationsController.dispose();
     _clinicAddressController.dispose();
+    _feedbackController.dispose();
     _workingHoursControllers.forEach((_, controller) => controller.dispose());
     super.dispose();
   }
 
+  Future<void> _fetchDoctorData() async {
+    setState(() => _isLoading = true);
+
+    try {
+      // Determine which doctor ID to use
+      String doctorId =
+          widget.doctorId ?? FirebaseAuth.instance.currentUser?.uid ?? '';
+
+      // Fetch doctor data from Firestore
+      DocumentSnapshot doctorDoc =
+          await FirebaseFirestore.instance
+              .collection('doctors')
+              .doc(doctorId)
+              .get();
+
+      if (doctorDoc.exists) {
+        Map<String, dynamic> data = doctorDoc.data() as Map<String, dynamic>;
+
+        // Convert working hours to the required format
+        Map<String, String> workingHours = {};
+        if (data['workingHours'] != null) {
+          (data['workingHours'] as Map<String, dynamic>).forEach((key, value) {
+            workingHours[key] = value.toString();
+          });
+        }
+
+        // Create Doctor object from Firestore data
+        _doctor = Doctor(
+          id: doctorDoc.id,
+          name: data['name'] ?? 'Unknown Doctor',
+          email: data['email'] ?? '',
+          specialty: data['specialty'] ?? '',
+          qualifications: data['qualification'] ?? '',
+          clinicAddress: data['clinicAddress'] ?? '',
+          workingHours: workingHours,
+          rating: (data['rating'] as num?)?.toDouble(),
+          experience: (data['experience'] as num?)?.toDouble(),
+          consultationFee: (data['consultationFee'] as num?)?.toDouble(),
+        );
+
+        // Update controllers with fetched data
+        _nameController.text = _doctor.name;
+        _emailController.text = _doctor.email;
+        _specialtyController.text = _doctor.specialty;
+        _qualificationsController.text = _doctor.qualifications;
+        _clinicAddressController.text = _doctor.clinicAddress;
+
+        // Initialize working hours controllers
+        _doctor.workingHours.forEach((day, hours) {
+          _workingHoursControllers[day] = TextEditingController(text: hours);
+        });
+
+        // Add default working hours controllers for days not in the database
+        [
+          'Monday',
+          'Tuesday',
+          'Wednesday',
+          'Thursday',
+          'Friday',
+          'Saturday',
+          'Sunday',
+        ].forEach((day) {
+          if (!_workingHoursControllers.containsKey(day)) {
+            _workingHoursControllers[day] = TextEditingController(
+              text: 'Not available',
+            );
+          }
+        });
+      } else {
+        // Handle case where doctor doesn't exist
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Doctor profile not found')),
+        );
+
+        // Initialize with empty doctor
+        _doctor = Doctor(
+          id: doctorId,
+          name: 'Unknown Doctor',
+          email: '',
+          specialty: '',
+          qualifications: '',
+          clinicAddress: '',
+          workingHours: {},
+        );
+
+        // Initialize default controllers
+        [
+          'Monday',
+          'Tuesday',
+          'Wednesday',
+          'Thursday',
+          'Friday',
+          'Saturday',
+          'Sunday',
+        ].forEach((day) {
+          _workingHoursControllers[day] = TextEditingController(
+            text: 'Not available',
+          );
+        });
+      }
+    } catch (e) {
+      // Handle errors
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error loading profile: ${e.toString()}')),
+      );
+
+      // Initialize with empty doctor
+      _doctor = Doctor(
+        id: widget.doctorId ?? 'unknown',
+        name: 'Error loading data',
+        email: '',
+        specialty: '',
+        qualifications: '',
+        clinicAddress: '',
+        workingHours: {},
+      );
+
+      // Initialize default controllers
+      [
+        'Monday',
+        'Tuesday',
+        'Wednesday',
+        'Thursday',
+        'Friday',
+        'Saturday',
+        'Sunday',
+      ].forEach((day) {
+        _workingHoursControllers[day] = TextEditingController(
+          text: 'Not available',
+        );
+      });
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _fetchReminders() async {
+    try {
+      // Get doctor's ID
+      String doctorId = FirebaseAuth.instance.currentUser?.uid ?? '';
+
+      // Fetch reminders from Firestore
+      QuerySnapshot reminderDocs =
+          await FirebaseFirestore.instance
+              .collection('reminders')
+              .where('patientId', isEqualTo: doctorId)
+              .orderBy('time')
+              .get();
+
+      List<Reminder> reminders = [];
+      for (var doc in reminderDocs.docs) {
+        Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+
+        // Convert Firestore timestamp to DateTime
+        DateTime time;
+        if (data['time'] is Timestamp) {
+          time = (data['time'] as Timestamp).toDate();
+        } else {
+          time = DateTime.now();
+        }
+
+        reminders.add(
+          Reminder(
+            id: doc.id,
+            userid: data['patientId'] ?? '',
+            task: data['task'] ?? 'No description',
+            time: time,
+          ),
+        );
+      }
+
+      setState(() {
+        _reminders.clear();
+        _reminders.addAll(reminders);
+      });
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error loading reminders: ${e.toString()}')),
+      );
+    }
+  }
+
+  Future<void> _updateProfile() async {
+    try {
+      // Create updated data map
+      Map<String, dynamic> updatedData = {
+        'name': _nameController.text,
+        'email': _emailController.text,
+        'specialty': _specialtyController.text,
+        'qualification': _qualificationsController.text,
+        'clinicAddress': _clinicAddressController.text,
+        'workingHours': _workingHoursControllers.map(
+          (day, controller) => MapEntry(day, controller.text),
+        ),
+      };
+
+      // Update Firestore document
+      await FirebaseFirestore.instance
+          .collection('doctors')
+          .doc(_doctor.id)
+          .update(updatedData);
+
+      // Update local doctor object
+      setState(() {
+        _doctor = Doctor(
+          id: _doctor.id,
+          name: _nameController.text,
+          email: _emailController.text,
+          specialty: _specialtyController.text,
+          qualifications: _qualificationsController.text,
+          clinicAddress: _clinicAddressController.text,
+          workingHours: _workingHoursControllers.map(
+            (day, controller) => MapEntry(day, controller.text),
+          ),
+          rating: _doctor.rating,
+          experience: _doctor.experience,
+          consultationFee: _doctor.consultationFee,
+        );
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Profile updated successfully!')),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error updating profile: ${e.toString()}')),
+      );
+    }
+  }
+
   void _toggleEditMode() {
-    // Only allow editing if doctorId is null (Doctor's own profile)
-    if (widget.doctorId != null) {
+    // Only allow editing if this is doctor's own profile
+    if (!widget.isOwnProfile) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('You cannot edit this profile')),
       );
@@ -85,234 +326,721 @@ class _DoctorProfileScreenState extends State<DoctorProfileScreen> {
     setState(() {
       _isEditing = !_isEditing;
       if (!_isEditing) {
-        // Save changes (simulated)
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Profile updated successfully!')),
-        );
+        // Save changes when exiting edit mode
+        _updateProfile();
       }
     });
   }
 
-  void _logout() {
-    Navigator.pushNamed(context , RouteNames.login);
+  Future<void> _submitFeedback() async {
+    if (_feedbackController.text.isEmpty) return;
+
+    try {
+      // Get current user ID
+      String userId = FirebaseAuth.instance.currentUser?.uid ?? 'anonymous';
+
+      // Create feedback data
+      Map<String, dynamic> feedbackData = {
+        'userId': userId,
+        'content': _feedbackController.text,
+        'timestamp': FieldValue.serverTimestamp(),
+        'userRole': 'doctor', // Since this is the doctor's profile
+      };
+
+      // Save to Firestore
+      await FirebaseFirestore.instance.collection('feedback').add(feedbackData);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Feedback submitted successfully!')),
+      );
+      _feedbackController.clear();
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error submitting feedback: ${e.toString()}')),
+      );
+    }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    // Determine if this is the Doctor's own profile or a patient-facing view
-    final isOwnProfile = widget.doctorId == null;
+  Future<void> _logout() async {
+    try {
+      await FirebaseAuth.instance.signOut();
+      // Navigate to login screen after successful logout
+      if (!mounted) return;
+      Navigator.pushReplacementNamed(context, RouteNames.login);
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error signing out: ${e.toString()}')),
+      );
+    }
+  }
 
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppColors.primary),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          isOwnProfile ? 'My Profile' : 'Doctor Profile',
-          style: GoogleFonts.poppins(fontWeight: FontWeight.bold, color: AppColors.textPrimary),
-        ),
-        backgroundColor: Colors.white,
-        elevation: 0,
-        actions: isOwnProfile
-            ? [
-          IconButton(
-            icon: Icon(
-              _isEditing ? Icons.save : Icons.edit,
-              color: AppColors.primary,
+  Future<void> _addReminder() async {
+    // Show dialog to add a new reminder
+    showDialog(
+      context: context,
+      builder: (context) {
+        final TextEditingController taskController = TextEditingController();
+        DateTime selectedDate = DateTime.now();
+        TimeOfDay selectedTime = TimeOfDay.now();
+
+        return AlertDialog(
+          title: const Text('Add Reminder'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: taskController,
+                  decoration: const InputDecoration(
+                    labelText: 'Reminder Description',
+                    hintText: 'Enter reminder details',
+                  ),
+                ),
+                const SizedBox(height: 16),
+                ListTile(
+                  title: const Text('Date'),
+                  subtitle: Text(
+                    '${selectedDate.year}-${selectedDate.month}-${selectedDate.day}',
+                  ),
+                  trailing: const Icon(Icons.calendar_today),
+                  onTap: () async {
+                    final DateTime? pickedDate = await showDatePicker(
+                      context: context,
+                      initialDate: selectedDate,
+                      firstDate: DateTime.now(),
+                      lastDate: DateTime.now().add(const Duration(days: 365)),
+                    );
+                    if (pickedDate != null) {
+                      selectedDate = pickedDate;
+                    }
+                  },
+                ),
+                ListTile(
+                  title: const Text('Time'),
+                  subtitle: Text('${selectedTime.hour}:${selectedTime.minute}'),
+                  trailing: const Icon(Icons.access_time),
+                  onTap: () async {
+                    final TimeOfDay? pickedTime = await showTimePicker(
+                      context: context,
+                      initialTime: selectedTime,
+                    );
+                    if (pickedTime != null) {
+                      selectedTime = pickedTime;
+                    }
+                  },
+                ),
+              ],
             ),
-            onPressed: _toggleEditMode,
           ),
-        ]
-            : null,
-      ),
-      body: SingleChildScrollView(
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () async {
+                if (taskController.text.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Please enter a description')),
+                  );
+                  return;
+                }
+
+                // Create DateTime from selected date and time
+                final DateTime reminderTime = DateTime(
+                  selectedDate.year,
+                  selectedDate.month,
+                  selectedDate.day,
+                  selectedTime.hour,
+                  selectedTime.minute,
+                );
+
+                // Save reminder to Firestore
+                try {
+                  String patientId =
+                      FirebaseAuth.instance.currentUser?.uid ?? '';
+                  await FirebaseFirestore.instance.collection('reminders').add({
+                    'patientId': patientId,
+                    'task': taskController.text,
+                    'time': Timestamp.fromDate(reminderTime),
+                    'isCompleted': false,
+                  });
+
+                  // Refresh reminders list
+                  _fetchReminders();
+
+                  Navigator.pop(context);
+                } catch (e) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Error saving reminder: ${e.toString()}'),
+                    ),
+                  );
+                }
+              },
+              child: const Text('Add'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // UI Building Methods
+  Widget _buildSection({
+    required String title,
+    required List<Widget> children,
+  }) {
+    return CustomCard(
+      child: Padding(
         padding: const EdgeInsets.all(AppSizes.defaultPadding),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Profile Header
-            FadeInDown(
-              child: Row(
+            Text(
+              title,
+              style: GoogleFonts.poppins(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: AppSizes.smallPadding),
+            ...children,
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInfoItem({
+    required IconData icon,
+    required String title,
+    required TextEditingController controller,
+    required bool isEditing,
+    required String value,
+    bool enabled = true,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: AppSizes.smallPadding / 2),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: AppColors.primary, size: 20),
+          const SizedBox(width: AppSizes.smallPadding),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.grey[600],
+                  ),
+                ),
+                const SizedBox(height: 4),
+                isEditing
+                    ? TextField(
+                      controller: controller,
+                      enabled: enabled,
+                      decoration: InputDecoration(
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                    )
+                    : Text(
+                      value.isEmpty ? 'Not specified' : value,
+                      style: GoogleFonts.poppins(fontSize: 16),
+                    ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWorkingHoursItem({
+    required String day,
+    required TextEditingController controller,
+    required bool isEditing,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 100,
+            child: Text(
+              day,
+              style: GoogleFonts.poppins(fontWeight: FontWeight.w500),
+            ),
+          ),
+          Expanded(
+            child:
+                isEditing
+                    ? TextField(
+                      controller: controller,
+                      decoration: InputDecoration(
+                        hintText: 'e.g. 9:00 AM - 5:00 PM',
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                    )
+                    : Text(
+                      controller.text.isEmpty
+                          ? 'Not available'
+                          : controller.text,
+                      style: GoogleFonts.poppins(),
+                    ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProfileTab(bool isOwnProfile) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(AppSizes.defaultPadding),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Profile Header with Image and Name
+          FadeInUp(
+            duration: const Duration(milliseconds: 300),
+            child: Center(
+              child: Column(
                 children: [
                   CircleAvatar(
-                    radius: 40,
-                    backgroundColor: AppColors.primary.withOpacity(0.1),
-                    child: Text(
-                      _doctor.name[0],
-                      style: GoogleFonts.poppins(
-                        fontSize: 40,
-                        color: AppColors.primary,
-                        fontWeight: FontWeight.bold,
-                      ),
+                    radius: 60,
+                    backgroundColor: AppColors.primary.withOpacity(0.2),
+                    child: Icon(
+                      Icons.person,
+                      size: 60,
+                      color: AppColors.primary,
                     ),
                   ),
-                  const SizedBox(width: AppSizes.defaultPadding),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
+                  const SizedBox(height: 16),
+                  _isEditing && isOwnProfile
+                      ? TextField(
+                        controller: _nameController,
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.poppins(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        decoration: const InputDecoration(
+                          border: InputBorder.none,
+                        ),
+                      )
+                      : Text(
                         _doctor.name,
                         style: GoogleFonts.poppins(
                           fontSize: 24,
                           fontWeight: FontWeight.bold,
-                          color: AppColors.textPrimary,
                         ),
                       ),
-                      Text(
-                        _doctor.specialty,
-                        style: GoogleFonts.poppins(
-                          fontSize: 16,
-                          color: AppColors.textSecondary,
-                        ),
+                  if (_doctor.rating != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8.0),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.star, color: Colors.amber, size: 20),
+                          const SizedBox(width: 4),
+                          Text(
+                            '${_doctor.rating!.toStringAsFixed(1)}',
+                            style: GoogleFonts.poppins(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
+                    ),
+                ],
+              ),
+            ),
+          ),
+
+          const SizedBox(height: AppSizes.largePadding),
+
+          // Specialty
+          FadeInUp(
+            delay: const Duration(milliseconds: 100),
+            child: _buildSection(
+              title: 'Specialty',
+              children: [
+                _buildInfoItem(
+                  icon: Icons.medical_services,
+                  title: 'Specialty',
+                  controller: _specialtyController,
+                  isEditing: _isEditing && isOwnProfile,
+                  value: _doctor.specialty,
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: AppSizes.defaultPadding),
+
+          // Qualifications
+          FadeInUp(
+            delay: const Duration(milliseconds: 150),
+            child: _buildSection(
+              title: 'Qualifications',
+              children: [
+                _buildInfoItem(
+                  icon: Icons.school,
+                  title: 'Degrees',
+                  controller: _qualificationsController,
+                  isEditing: _isEditing && isOwnProfile,
+                  value: _doctor.qualifications,
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: AppSizes.defaultPadding),
+
+          // Contact Information
+          FadeInUp(
+            delay: const Duration(milliseconds: 200),
+            child: _buildSection(
+              title: 'Contact Information',
+              children: [
+                _buildInfoItem(
+                  icon: Icons.email,
+                  title: 'Email',
+                  controller: _emailController,
+                  isEditing: _isEditing && isOwnProfile,
+                  value: _doctor.email,
+                  enabled: false, // Email not editable
+                ),
+                _buildInfoItem(
+                  icon: Icons.location_on,
+                  title: 'Clinic Address',
+                  controller: _clinicAddressController,
+                  isEditing: _isEditing && isOwnProfile,
+                  value: _doctor.clinicAddress,
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: AppSizes.defaultPadding),
+
+          // Working Hours
+          FadeInUp(
+            delay: const Duration(milliseconds: 250),
+            child: _buildSection(
+              title: 'Working Hours',
+              children: [
+                ...[
+                      'Monday',
+                      'Tuesday',
+                      'Wednesday',
+                      'Thursday',
+                      'Friday',
+                      'Saturday',
+                      'Sunday',
+                    ]
+                    .map(
+                      (day) => _buildWorkingHoursItem(
+                        day: day,
+                        controller: _workingHoursControllers[day]!,
+                        isEditing: _isEditing && isOwnProfile,
+                      ),
+                    )
+                    .toList(),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: AppSizes.defaultPadding),
+
+          // Book Appointment Button (only show when a patient is viewing)
+          if (!isOwnProfile)
+            FadeInUp(
+              delay: const Duration(milliseconds: 300),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CustomButton(
+                    text: 'Book Appointment',
+                    color: AppColors.primary,
+                    onPressed: () {
+                      Navigator.pushNamed(
+                        context,
+                        RouteNames.appointmentBooking,
+                        arguments: {"id": widget.doctorId},
+                      );
+                    },
+                  ),
+                  const SizedBox(height: AppSizes.defaultPadding),
+                  CustomButton(
+                    text: 'Message Doctor',
+                    color: AppColors.primary,
+                    onPressed: () {
+                      Navigator.pushNamed(
+                        context,
+                        RouteNames.message,
+                        arguments: {
+                          "id": widget.doctorId,
+                          "name": _doctor.name,
+                        },
+                      );
+                    },
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: AppSizes.largePadding),
 
-            // Basic Info
-            FadeInUp(
-              child: Text(
-                'Basic Information',
-                style: GoogleFonts.poppins(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-            ),
-            const SizedBox(height: AppSizes.defaultPadding),
-            FadeInUp(
-              delay: const Duration(milliseconds: 100),
-              child: CustomTextField(
-                hintText: 'Name',
-                controller: _nameController,
-                enabled: _isEditing && isOwnProfile,
-              ),
-            ),
-            const SizedBox(height: AppSizes.defaultPadding),
-            FadeInUp(
-              delay: const Duration(milliseconds: 200),
-              child: CustomTextField(
-                hintText: 'Email',
-                controller: _emailController,
-                enabled: false, // Email typically shouldn't be editable
-              ),
-            ),
-            const SizedBox(height: AppSizes.defaultPadding),
+          // Logout Button (only for Doctor's own profile)
+          if (isOwnProfile)
             FadeInUp(
               delay: const Duration(milliseconds: 300),
-              child: CustomTextField(
-                hintText: 'Specialty',
-                controller: _specialtyController,
-                enabled: _isEditing && isOwnProfile,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CustomButton(
+                    text: 'Change Password',
+                    color: AppColors.primary,
+                    onPressed: () {
+                      Navigator.pushNamed(context, RouteNames.changePassword);
+                    },
+                  ),
+                  CustomButton(
+                    text: 'Logout',
+                    color: AppColors.error,
+                    onPressed: _logout,
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: AppSizes.defaultPadding),
-            FadeInUp(
-              delay: const Duration(milliseconds: 400),
-              child: CustomTextField(
-                hintText: 'Qualifications',
-                controller: _qualificationsController,
-                enabled: _isEditing && isOwnProfile,
-              ),
-            ),
-            const SizedBox(height: AppSizes.defaultPadding),
-            FadeInUp(
-              delay: const Duration(milliseconds: 500),
-              child: CustomTextField(
-                hintText: 'Clinic Address',
-                controller: _clinicAddressController,
-                enabled: _isEditing && isOwnProfile,
-              ),
-            ),
-            const SizedBox(height: AppSizes.largePadding),
+        ],
+      ),
+    );
+  }
 
-            // Working Hours
-            FadeInUp(
-              delay: const Duration(milliseconds: 600),
-              child: Text(
-                'Working Hours',
+  Widget _buildRemindersTab() {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(AppSizes.defaultPadding),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'My Reminders',
                 style: GoogleFonts.poppins(
                   fontSize: 20,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textPrimary,
+                  fontWeight: FontWeight.bold,
                 ),
+              ),
+              FloatingActionButton(
+                mini: true,
+                onPressed: _addReminder,
+                child: const Icon(Icons.add),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child:
+              _reminders.isEmpty
+                  ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.notifications_off,
+                          size: 64,
+                          color: Colors.grey[400],
+                        ),
+                        const SizedBox(height: AppSizes.defaultPadding),
+                        Text(
+                          'No reminders yet',
+                          style: GoogleFonts.poppins(
+                            fontSize: 18,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                        const SizedBox(height: AppSizes.smallPadding),
+                        Text(
+                          'Tap the + button to add a reminder',
+                          style: GoogleFonts.poppins(
+                            fontSize: 14,
+                            color: Colors.grey[500],
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                  : ListView.builder(
+                    itemCount: _reminders.length,
+                    padding: const EdgeInsets.all(AppSizes.defaultPadding),
+                    itemBuilder: (context, index) {
+                      final reminder = _reminders[index];
+                      return FadeInUp(
+                        delay: Duration(milliseconds: index * 50),
+                        child: Dismissible(
+                          key: Key(reminder.id),
+                          direction: DismissDirection.endToStart,
+                          background: Container(
+                            alignment: Alignment.centerRight,
+                            padding: const EdgeInsets.only(right: 20),
+                            color: AppColors.error,
+                            child: const Icon(
+                              Icons.delete,
+                              color: Colors.white,
+                            ),
+                          ),
+                          onDismissed: (direction) async {
+                            // Remove from Firestore
+                            try {
+                              await FirebaseFirestore.instance
+                                  .collection('reminders')
+                                  .doc(reminder.id)
+                                  .delete();
+
+                              setState(() {
+                                _reminders.removeAt(index);
+                              });
+                            } catch (e) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    'Error deleting reminder: ${e.toString()}',
+                                  ),
+                                ),
+                              );
+                            }
+                          },
+                          child: Card(
+                            elevation: 2,
+                            margin: const EdgeInsets.only(bottom: 12),
+                            child: ListTile(
+                              title: Text(
+                                reminder.task,
+                                style: GoogleFonts.poppins(
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              subtitle: Text(
+                                '${reminder.time.day}/${reminder.time.month}/${reminder.time.year} at ${reminder.time.hour}:${reminder.time.minute.toString().padLeft(2, '0')}',
+                                style: GoogleFonts.poppins(fontSize: 12),
+                              ),
+                              trailing: const Icon(Icons.notifications_active),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFeedbackTab() {
+    return Padding(
+      padding: const EdgeInsets.all(AppSizes.defaultPadding),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Send Feedback',
+            style: GoogleFonts.poppins(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: AppSizes.defaultPadding),
+          Text(
+            'We appreciate your feedback to improve our services. Please share your thoughts below:',
+            style: GoogleFonts.poppins(fontSize: 14, color: Colors.grey[600]),
+          ),
+          const SizedBox(height: AppSizes.defaultPadding),
+          TextField(
+            controller: _feedbackController,
+            maxLines: 5,
+            decoration: InputDecoration(
+              hintText: 'Write your feedback here...',
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
               ),
             ),
-            const SizedBox(height: AppSizes.defaultPadding),
-            ..._workingHoursControllers.entries.map((entry) {
-              final day = entry.key;
-              final controller = entry.value;
-              return FadeInUp(
-                delay: Duration(milliseconds: 700 + 100 * _workingHoursControllers.keys.toList().indexOf(day)),
-                child: Padding(
-                  padding: const EdgeInsets.only(bottom: AppSizes.defaultPadding),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        flex: 2,
-                        child: Text(
-                          day,
-                          style: GoogleFonts.poppins(fontWeight: FontWeight.w500),
-                        ),
-                      ),
-                      Expanded(
-                        flex: 3,
-                        child: CustomTextField(
-                          hintText: 'e.g., 9:00-17:00',
-                          controller: controller,
-                          enabled: _isEditing && isOwnProfile,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            }).toList(),
-            const SizedBox(height: AppSizes.largePadding),
+          ),
+          const SizedBox(height: AppSizes.defaultPadding),
+          CustomButton(
+            text: 'Submit Feedback',
+            color: AppColors.primary,
+            onPressed: _submitFeedback,
+          ),
+        ],
+      ),
+    );
+  }
 
-            // Commission Rate (Read-only, set by Admin, only visible for Doctor's own profile)
-            if (isOwnProfile) ...[
-              FadeInUp(
-                child: Text(
-                  'Commission Rate',
-                  style: GoogleFonts.poppins(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-              ),
-              const SizedBox(height: AppSizes.defaultPadding),
-              FadeInUp(
-                delay: const Duration(milliseconds: 100),
-                child: CustomTextField(
-                  hintText: 'Commission Rate',
-                  controller: TextEditingController(text: '${_doctor.commissionRate}%'),
-                  enabled: false, // Set by Admin
-                ),
-              ),
-              const SizedBox(height: AppSizes.largePadding),
-            ],
+  @override
+  Widget build(BuildContext context) {
+    final isOwnProfile = widget.isOwnProfile;
 
-            // Logout Button (only for Doctor's own profile)
-            if (isOwnProfile)
-              FadeInUp(
-                delay: const Duration(milliseconds: 200),
-                child: CustomButton(
-                  text: 'Logout',
-                  color: AppColors.error,
-                  onPressed: _logout,
-                ),
-              ),
-          ],
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(
+          isOwnProfile ? 'My Profile' : 'Doctor Profile',
+          style: GoogleFonts.poppins(fontWeight: FontWeight.bold),
+        ),
+        actions: [
+          if (isOwnProfile)
+            IconButton(
+              icon: Icon(_isEditing ? Icons.check : Icons.edit),
+              onPressed: _toggleEditMode,
+            ),
+        ],
+        bottom: TabBar(
+          controller: _tabController,
+          // Show appropriate tabs based on who is viewing
+          tabs:
+              isOwnProfile
+                  ? const [
+                    Tab(text: 'Profile', icon: Icon(Icons.person)),
+                    Tab(text: 'Reminders', icon: Icon(Icons.notifications)),
+                    Tab(text: 'Feedback', icon: Icon(Icons.feedback)),
+                  ]
+                  : const [Tab(text: 'Profile', icon: Icon(Icons.person))],
         ),
       ),
+      body:
+          _isLoading
+              ? Center(
+                child: CircularProgressIndicator(color: AppColors.primary),
+              )
+              : TabBarView(
+                controller: _tabController,
+                // Match the TabBar with the appropriate tabs content
+                children:
+                    isOwnProfile
+                        ? [
+                          _buildProfileTab(isOwnProfile),
+                          _buildRemindersTab(),
+                          _buildFeedbackTab(),
+                        ]
+                        : [_buildProfileTab(isOwnProfile)],
+              ),
     );
   }
 }

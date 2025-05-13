@@ -12,6 +12,7 @@ class AppSizes {
   static const double buttonRadius = 12.0;
   static const double cardRadius = 12.0;
   static const double textFieldRadius = 8.0;
+  static const double inputRadius = 10.0; // Added this line
 
   // Elevation
   static const double cardElevation = 4.0; // Add this for custom_card.dart

@@ -10,7 +10,8 @@ class CustomTextField extends StatelessWidget {
   final bool obscureText;
   final String? Function(String?)? validator;
   final int? maxLines;
-  final bool enabled; // Added enabled parameter
+  final IconData? prefixIcon; // Added parameter
+  final bool enabled; // Added parameter
 
   const CustomTextField({
     super.key,
@@ -20,7 +21,8 @@ class CustomTextField extends StatelessWidget {
     this.obscureText = false,
     this.validator,
     this.maxLines = 1,
-    this.enabled = true, // Default to true
+    this.prefixIcon, // Initialize the added parameter
+    this.enabled = true, // Initialize with default value
   });
 
   @override
@@ -31,22 +33,20 @@ class CustomTextField extends StatelessWidget {
       obscureText: obscureText,
       validator: validator,
       maxLines: maxLines,
-      enabled: enabled, // Pass the enabled parameter to TextFormField
+      enabled: enabled, // Use the enabled parameter
       decoration: InputDecoration(
         hintText: hintText,
-        hintStyle: GoogleFonts.poppins(color: AppColors.textSecondary),
-        filled: true,
-        fillColor: Colors.white,
+        prefixIcon: prefixIcon != null ? Icon(prefixIcon, color: AppColors.primary) : null, // Use the prefixIcon
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(AppSizes.textFieldRadius),
-          borderSide: BorderSide.none,
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide(color: AppColors.primary),
         ),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: AppSizes.defaultPadding,
-          vertical: AppSizes.defaultPadding,
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide(color: AppColors.primary, width: 2),
         ),
+        contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       ),
-      style: GoogleFonts.poppins(),
     );
   }
 }

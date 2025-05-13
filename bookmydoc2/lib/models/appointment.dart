@@ -25,7 +25,7 @@ class Appointment {
     'id': id,
     'patientId': patientId,
     'doctorId': doctorId,
-    'dateTime': dateTime.toIso8601String(),
+    'dateTime': dateTime,
     'status': status.toString().split('.').last,
     'fee': fee,
     'isPaid': isPaid,
@@ -36,7 +36,7 @@ class Appointment {
     id: json['id'] as String,
     patientId: json['patientId'] as String,
     doctorId: json['doctorId'] as String,
-    dateTime: DateTime.parse(json['dateTime'] as String),
+    dateTime: DateTime.parse(json['dateTime']),
     status: AppointmentStatus.values.firstWhere(
           (e) => e.toString().split('.').last == json['status'],
     ),

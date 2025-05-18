@@ -31,4 +31,8 @@ BookMyDoc2 is a modern, cross-platform mobile app built with Flutter. It connect
 | Icons      | Material, Feather Icons                   |
 
 ## 🔧 How to Run the App Locally
-- Clone the repo: git clone 
+
+- Clone the repo: git clone https://github.com/Khuzaim123/BookMyDoc.git
+- Install dependencies: flutter pub get
+- Connect Firebase (Add your own google-services.json and GoogleService-Info.plist).
+- Run the App: flutter run

@@ -28,7 +28,6 @@ BookMyDoc2 is a modern, cross-platform mobile app built with Flutter. It connect
 | Navigation | Flutter Navigator                         |
 | Animations | Flutter built-in animations, animated\_do |
 | Fonts      | Google Fonts (Poppins)                    |
-| Icons      | Material, Feather Icons                   |
 
 ## 🔧 How to Run the App Locally
 
@@ -44,3 +43,11 @@ BookMyDoc2 is a modern, cross-platform mobile app built with Flutter. It connect
 - ✅ Admin Panel for approving doctors and analytics
 - ✅ Ratings and Reviews System for doctors
 - ✅ Cancel/Reschedule Appointments
+
+## Project Structure
+
+![image](https://github.com/user-attachments/assets/71f41343-8f30-4c99-9b77-2ceb49d11c8c)
+
+![image](https://github.com/user-attachments/assets/2887ecd9-a3b1-4c7a-9ba7-fa26f9fe9ed6)
+
+![image](https://github.com/user-attachments/assets/659043bc-3735-47d4-8a8b-b65f3e560829)

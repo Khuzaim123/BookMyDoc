@@ -46,8 +46,8 @@ BookMyDoc2 is a modern, cross-platform mobile app built with Flutter. It connect
 
 ## Project Structure
 
-![image](https://github.com/user-attachments/assets/71f41343-8f30-4c99-9b77-2ceb49d11c8c)
+![image](https://github.com/user-attachments/assets/6bfbdf16-459b-4c3b-bc12-cd1d5db6cf8e)
 
 ![image](https://github.com/user-attachments/assets/2887ecd9-a3b1-4c7a-9ba7-fa26f9fe9ed6)
 
-![image](https://github.com/user-attachments/assets/659043bc-3735-47d4-8a8b-b65f3e560829)
+![image](https://github.com/user-attachments/assets/abbed1b5-465e-4477-9c1e-bc1f56676aec)

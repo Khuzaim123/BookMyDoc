@@ -36,3 +36,11 @@ BookMyDoc2 is a modern, cross-platform mobile app built with Flutter. It connect
 - Install dependencies: flutter pub get
 - Connect Firebase (Add your own google-services.json and GoogleService-Info.plist).
 - Run the App: flutter run
+
+## 🚀 Future Enhancements
+
+- ✅ AI Chatbot Integration (in progress using Hugging Face)
+- ✅ Push Notifications (appointment reminders, messages)
+- ✅ Admin Panel for approving doctors and analytics
+- ✅ Ratings and Reviews System for doctors
+- ✅ Cancel/Reschedule Appointments

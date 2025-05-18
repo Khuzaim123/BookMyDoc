@@ -29,3 +29,6 @@ BookMyDoc2 is a modern, cross-platform mobile app built with Flutter. It connect
 | Animations | Flutter built-in animations, animated\_do |
 | Fonts      | Google Fonts (Poppins)                    |
 | Icons      | Material, Feather Icons                   |
+
+## 🔧 How to Run the App Locally
+- Clone the repo: git clone 

@@ -159,6 +159,13 @@ class _HomeScreenState extends State<HomeScreen> {
                 );
               },
             ),
+            ListTile(
+              leading: Icon(Icons.chat, color: AppColors.error),
+              title: Text('Doc Bot', style: GoogleFonts.poppins()),
+              onTap: () async {
+                Navigator.pushNamed(context, RouteNames.aiAssistant);
+              },
+            ),
           ],
         ),
       ),

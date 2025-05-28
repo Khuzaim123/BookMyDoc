@@ -30,23 +30,15 @@ class _SplashScreenState extends State<SplashScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Logo with fade and bounce animation
+            // Hospital Icon with fade and bounce animation
             FadeInDown(
               duration: const Duration(milliseconds: 1500),
               child: BounceInDown(
                 duration: const Duration(milliseconds: 1500),
-                child: Image.asset(
-                  'assets/images/final_logo.png',
-                  width: 150,
-                  height: 150,
-                  errorBuilder: (context, error, stackTrace) {
-                    print('Error loading logo: $error');
-                    return const Icon(
-                      Icons.local_hospital_rounded,
-                      size: 100,
-                      color: Colors.white,
-                    );
-                  },
+                child: const Icon(
+                  Icons.local_hospital_rounded,
+                  size: 100,
+                  color: Colors.white,
                 ),
               ),
             ),
@@ -58,13 +50,13 @@ class _SplashScreenState extends State<SplashScreen> {
               child: Text(
                 'BookMyDoc',
                 style: GoogleFonts.poppins(
-                  fontSize: 32,
+                  fontSize: 42,
                   fontWeight: FontWeight.bold,
                   color: Colors.white,
                 ),
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 24),
             // Tagline with fade animation
             FadeIn(
               duration: const Duration(milliseconds: 1500),
@@ -72,8 +64,8 @@ class _SplashScreenState extends State<SplashScreen> {
               child: Text(
                 'Your Health, Our Priority',
                 style: GoogleFonts.poppins(
-                  fontSize: 16,
-                  color: Colors.white.withOpacity(0.8),
+                  fontSize: 18,
+                  color: Colors.white.withOpacity(0.9),
                 ),
               ),
             ),

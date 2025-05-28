@@ -23,6 +23,7 @@ import 'package:bookmydoc2/models/appointment.dart';
 import 'package:bookmydoc2/screens/appointment_detail_screen.dart';
 import 'package:bookmydoc2/screens/change_password_screen.dart';
 import 'package:bookmydoc2/screens/about_us_screen.dart';
+import 'package:bookmydoc2/screens/ai_assistant_screen.dart';
 
 class RouteNames {
   static const String signUp = '/signup';
@@ -40,6 +41,7 @@ class RouteNames {
   static const String editAppointment = '/edit-appointment';
   static const String appointmentDetail = '/appointment-detail';
   static const String changePassword = '/change-password';
+  static const String aiAssistant = '/ai-assistant';
 
   static const String doctorHome = '/doctor-home';
   static const String doctorAppointments = '/doctor-appointments';
@@ -154,6 +156,8 @@ Route<dynamic> generateRoute(RouteSettings settings) {
       return MaterialPageRoute(builder: (_) => ChangePasswordScreen());
     case RouteNames.aboutUs:
       return MaterialPageRoute(builder: (_) => AboutUsScreen());
+    case RouteNames.aiAssistant:
+      return MaterialPageRoute(builder: (_) => AiAssistantScreen());
     default:
       return MaterialPageRoute(
         builder:

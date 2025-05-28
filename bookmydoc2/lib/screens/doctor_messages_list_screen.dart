@@ -9,8 +9,6 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../models/user_image.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 
 class DoctorMessagesListScreen extends StatefulWidget {
   const DoctorMessagesListScreen({super.key});
@@ -23,22 +21,6 @@ class DoctorMessagesListScreen extends StatefulWidget {
 class _DoctorMessagesListScreenState extends State<DoctorMessagesListScreen> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-
-  Future<String?> _fetchUserImageUrl(String userId) async {
-    try {
-      final userImageDoc =
-          await _firestore.collection('userImages').doc(userId).get();
-      if (userImageDoc.exists) {
-        final imageData = userImageDoc.data() as Map<String, dynamic>;
-        return imageData['imageUrl'];
-      } else {
-        return null;
-      }
-    } catch (e) {
-      print('Error fetching user image URL: $e');
-      return null;
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -74,7 +56,7 @@ class _DoctorMessagesListScreenState extends State<DoctorMessagesListScreen> {
                   if (snapshot.hasError) {
                     return Center(
                       child: Text(
-                        'Error: ${snapshot.error}',
+                        'Error: \\${snapshot.error}',
                         style: GoogleFonts.poppins(color: AppColors.error),
                       ),
                     );
@@ -89,12 +71,13 @@ class _DoctorMessagesListScreenState extends State<DoctorMessagesListScreen> {
                         child: Text(
                           'No messages yet',
                           style: GoogleFonts.poppins(
-                            color: AppColors.textLight,
+                            color: AppColors.textSecondary,
                           ),
                         ),
                       ),
                     );
                   }
+                  // Group messages by patient
                   final Map<String, List<Message>> messagesByPatient = {};
                   for (final doc in docs) {
                     final data = doc.data() as Map<String, dynamic>;
@@ -126,94 +109,73 @@ class _DoctorMessagesListScreenState extends State<DoctorMessagesListScreen> {
                           patientMessages.where((m) => !m.isRead).length;
                       return FutureBuilder<DocumentSnapshot>(
                         future:
-                            _firestore.collection('users').doc(patientId).get(),
-                        builder: (context, userSnapshot) {
+                            _firestore
+                                .collection('patients')
+                                .doc(patientId)
+                                .get(),
+                        builder: (context, patientSnapshot) {
                           String patientName = 'Unknown';
-                          String? imageUrl;
-
-                          if (userSnapshot.hasData &&
-                              userSnapshot.data!.exists) {
+                          if (patientSnapshot.hasData &&
+                              patientSnapshot.data!.exists) {
                             final pdata =
-                                userSnapshot.data!.data()
+                                patientSnapshot.data!.data()
                                     as Map<String, dynamic>;
                             patientName = pdata['name'] ?? 'Unknown';
                           }
-
-                          return FutureBuilder<String?>(
-                            future: _fetchUserImageUrl(patientId),
-                            builder: (context, imageSnapshot) {
-                              if (imageSnapshot.connectionState ==
-                                  ConnectionState.done) {
-                                imageUrl = imageSnapshot.data;
-                              }
-                              return FadeInUp(
-                                delay: Duration(milliseconds: index * 100),
-                                child: CustomCard(
-                                  child: ListTile(
-                                    leading: CircleAvatar(
-                                      radius: 24,
-                                      backgroundColor: AppColors.primary
-                                          .withOpacity(0.1),
-                                      backgroundImage:
-                                          imageUrl != null
-                                              ? CachedNetworkImageProvider(
-                                                imageUrl!,
-                                              )
-                                              : null,
-                                      child:
-                                          imageUrl == null
-                                              ? Text(
-                                                patientName.isNotEmpty
-                                                    ? patientName[0]
-                                                        .toUpperCase()
-                                                    : '?',
-                                                style: GoogleFonts.poppins(
-                                                  color: AppColors.primary,
-                                                  fontWeight: FontWeight.bold,
-                                                ),
-                                              )
-                                              : null,
+                          return FadeInUp(
+                            delay: Duration(milliseconds: index * 100),
+                            child: CustomCard(
+                              child: ListTile(
+                                leading: CircleAvatar(
+                                  backgroundColor: AppColors.primary
+                                      .withOpacity(0.1),
+                                  child: Text(
+                                    patientName.isNotEmpty
+                                        ? patientName[0]
+                                        : '?',
+                                    style: GoogleFonts.poppins(
+                                      color: AppColors.primary,
+                                      fontWeight: FontWeight.bold,
                                     ),
-                                    title: Text(
-                                      patientName,
-                                      style: GoogleFonts.poppins(
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                    subtitle: Text(
-                                      latestMessage.content,
-                                      style: GoogleFonts.poppins(
-                                        color: AppColors.textLight,
-                                      ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    trailing:
-                                        unreadCount > 0
-                                            ? CircleAvatar(
-                                              radius: 12,
-                                              backgroundColor:
-                                                  AppColors.primary,
-                                              child: Text(
-                                                unreadCount.toString(),
-                                                style: GoogleFonts.poppins(
-                                                  color: Colors.white,
-                                                  fontSize: 12,
-                                                ),
-                                              ),
-                                            )
-                                            : null,
-                                    onTap: () {
-                                      Navigator.pushNamed(
-                                        context,
-                                        RouteNames.doctorMessage,
-                                        arguments: {'id': patientId},
-                                      );
-                                    },
                                   ),
                                 ),
-                              );
-                            },
+                                title: Text(
+                                  patientName,
+                                  style: GoogleFonts.poppins(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                subtitle: Text(
+                                  latestMessage.content,
+                                  style: GoogleFonts.poppins(
+                                    color: AppColors.textSecondary,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                trailing:
+                                    unreadCount > 0
+                                        ? CircleAvatar(
+                                          radius: 12,
+                                          backgroundColor: AppColors.primary,
+                                          child: Text(
+                                            unreadCount.toString(),
+                                            style: GoogleFonts.poppins(
+                                              color: Colors.white,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                        )
+                                        : null,
+                                onTap: () {
+                                  Navigator.pushNamed(
+                                    context,
+                                    RouteNames.doctorMessage,
+                                    arguments: {'id': patientId},
+                                  );
+                                },
+                              ),
+                            ),
                           );
                         },
                       );

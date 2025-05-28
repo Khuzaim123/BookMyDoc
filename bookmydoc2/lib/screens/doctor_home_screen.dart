@@ -172,9 +172,12 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppColors.primary),
-          onPressed: () => Navigator.pop(context),
+        leading: Builder(
+          builder:
+              (context) => IconButton(
+                icon: const Icon(Icons.menu, color: AppColors.primary),
+                onPressed: () => Scaffold.of(context).openDrawer(),
+              ),
         ),
         title: Text(
           AppStrings.appName,
@@ -244,11 +247,35 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
               },
             ),
             ListTile(
+              leading: Icon(Icons.calendar_today, color: AppColors.primaryDark),
+              title: Text('Appointments', style: GoogleFonts.poppins()),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.pushNamed(context, RouteNames.doctorAppointments);
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.message, color: AppColors.primaryDark),
+              title: Text('Messages', style: GoogleFonts.poppins()),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.pushNamed(context, RouteNames.doctorMessagesList);
+              },
+            ),
+            ListTile(
               leading: Icon(Icons.info_outline, color: AppColors.primaryDark),
               title: Text('About Us', style: GoogleFonts.poppins()),
               onTap: () {
                 Navigator.pop(context);
                 Navigator.pushNamed(context, RouteNames.aboutUs);
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.chat, color: AppColors.primaryDark),
+              title: Text('Doc Bot', style: GoogleFonts.poppins()),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.pushNamed(context, RouteNames.aiAssistant);
               },
             ),
             ListTile(

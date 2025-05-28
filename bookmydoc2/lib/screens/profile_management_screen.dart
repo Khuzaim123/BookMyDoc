@@ -3,8 +3,12 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:animate_do/animate_do.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'dart:io';
 import '../models/patient.dart';
 import '../models/reminder.dart';
+import '../models/user_image.dart';
 import '../constants/colors.dart';
 import '../constants/sizes.dart';
 import '../widgets/custom_button.dart';
@@ -32,8 +36,11 @@ class _ProfileManagementScreenState extends State<ProfileManagementScreen>
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseStorage _storage = FirebaseStorage.instance;
+  final ImagePicker _picker = ImagePicker();
 
   Patient? _patient;
+  UserImage? _userImage;
   bool _isLoading = true;
   String? _errorMessage;
 
@@ -42,6 +49,7 @@ class _ProfileManagementScreenState extends State<ProfileManagementScreen>
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
     _loadUserData();
+    _loadUserImage();
   }
 
   @override
@@ -55,7 +63,6 @@ class _ProfileManagementScreenState extends State<ProfileManagementScreen>
     super.dispose();
   }
 
-  // Load user data from Firestore
   Future<void> _loadUserData() async {
     setState(() {
       _isLoading = true;
@@ -63,18 +70,15 @@ class _ProfileManagementScreenState extends State<ProfileManagementScreen>
     });
 
     try {
-      // Get current user
       final User? currentUser = _auth.currentUser;
       if (currentUser == null) {
         throw Exception('No user logged in');
       }
 
-      // Get user data from Firestore
       final patientSnapshot =
           await _firestore.collection('patients').doc(currentUser.uid).get();
 
       if (patientSnapshot.exists) {
-        // Create user object from snapshot
         final data = patientSnapshot.data() as Map<String, dynamic>;
         _patient = Patient(
           id: currentUser.uid,
@@ -83,33 +87,101 @@ class _ProfileManagementScreenState extends State<ProfileManagementScreen>
           phone: data['phone'] ?? '',
         );
 
-        // Set text controllers
         _nameController.text = _patient!.name;
         _emailController.text = _patient!.email;
         _phoneController.text = _patient!.phone;
-
-        setState(() {
-          _isLoading = false;
-        });
       } else {
-        throw Exception('User data not found');
+        throw Exception('User data not found in patients collection');
       }
     } catch (e) {
       setState(() {
-        _errorMessage = 'Failed to load profile: ${e.toString()}';
+        _errorMessage = 'Failed to load profile data: ${e.toString()}';
         _isLoading = false;
       });
-      print('Error loading profile: $e');
+      print('Error loading profile data: $e');
+    } finally {
+      if (_patient != null && _userImage != null) {
+        setState(() => _isLoading = false);
+      } else if (_patient != null && _userImage == null) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
-  // Update profile in Firestore
+  Future<void> _loadUserImage() async {
+    try {
+      final User? currentUser = _auth.currentUser;
+      if (currentUser == null) return;
+
+      final userImageSnapshot =
+          await _firestore.collection('userImages').doc(currentUser.uid).get();
+
+      if (userImageSnapshot.exists) {
+        final data = userImageSnapshot.data() as Map<String, dynamic>;
+        _userImage = UserImage.fromFirestore(data);
+      } else {
+        _userImage = null;
+      }
+    } catch (e) {
+      print('Error loading user image: $e');
+      _userImage = null;
+    } finally {
+      if (_patient != null) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  Future<void> _pickAndUploadImage() async {
+    final User? currentUser = _auth.currentUser;
+    if (currentUser == null) return;
+
+    try {
+      final XFile? pickedFile = await _picker.pickImage(
+        source: ImageSource.gallery,
+      );
+
+      if (pickedFile != null) {
+        final storageRef = _storage.ref().child(
+          'userImages/${currentUser.uid}/profile.png',
+        );
+
+        final uploadTask = storageRef.putFile(File(pickedFile.path));
+
+        final snapshot = await uploadTask.whenComplete(() {});
+        final downloadUrl = await snapshot.ref.getDownloadURL();
+
+        await _firestore.collection('userImages').doc(currentUser.uid).set({
+          'userId': currentUser.uid,
+          'imageUrl': downloadUrl,
+        });
+
+        setState(() {
+          _userImage = UserImage(
+            userId: currentUser.uid,
+            imageUrl: downloadUrl,
+          );
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Profile picture updated successfully!'),
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to upload picture: ${e.toString()}')),
+      );
+      print('Error uploading picture: $e');
+    }
+  }
+
   Future<void> _updateProfile() async {
     try {
       final User? currentUser = _auth.currentUser;
       if (currentUser == null) return;
 
-      // Validate input
       if (_nameController.text.isEmpty || _phoneController.text.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Please fill all required fields')),
@@ -117,24 +189,21 @@ class _ProfileManagementScreenState extends State<ProfileManagementScreen>
         return;
       }
 
-      // Update in Firestore
       await _firestore.collection('patients').doc(currentUser.uid).update({
         'name': _nameController.text,
         'phone': _phoneController.text,
       });
 
-      // Also update in users collection
       await _firestore.collection('users').doc(currentUser.uid).update({
         'name': _nameController.text,
         'phone': _phoneController.text,
       });
 
-      // Update local state
       setState(() {
         _patient = Patient(
           id: currentUser.uid,
           name: _nameController.text,
-          email: _emailController.text,
+          email: _patient!.email,
           phone: _phoneController.text,
         );
       });
@@ -150,7 +219,6 @@ class _ProfileManagementScreenState extends State<ProfileManagementScreen>
     }
   }
 
-  // Sign out user
   Future<void> _signOut() async {
     try {
       await _auth.signOut();
@@ -167,7 +235,6 @@ class _ProfileManagementScreenState extends State<ProfileManagementScreen>
     }
   }
 
-  // Submit feedback to Firestore
   Future<void> _submitFeedback() async {
     if (_feedbackController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -180,7 +247,6 @@ class _ProfileManagementScreenState extends State<ProfileManagementScreen>
       final User? currentUser = _auth.currentUser;
       if (currentUser == null) return;
 
-      // Add feedback to Firestore
       await _firestore.collection('feedback').add({
         'patientId': currentUser.uid,
         'content': _feedbackController.text,
@@ -199,7 +265,6 @@ class _ProfileManagementScreenState extends State<ProfileManagementScreen>
     }
   }
 
-  // Add reminder to Firestore
   Future<void> _addReminder() async {
     if (_reminderTaskController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -208,7 +273,6 @@ class _ProfileManagementScreenState extends State<ProfileManagementScreen>
       return;
     }
 
-    // Validate that reminder time is in the future
     if (_reminderTime.isBefore(DateTime.now())) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -222,7 +286,6 @@ class _ProfileManagementScreenState extends State<ProfileManagementScreen>
       final User? currentUser = _auth.currentUser;
       if (currentUser == null) return;
 
-      // Add new reminder to Firestore
       await _firestore.collection('reminders').add({
         'patientId': currentUser.uid,
         'task': _reminderTaskController.text,
@@ -230,11 +293,9 @@ class _ProfileManagementScreenState extends State<ProfileManagementScreen>
         'createdAt': FieldValue.serverTimestamp(),
       });
 
-      // Reset form
       _reminderTaskController.clear();
       _reminderTime = DateTime.now().add(const Duration(hours: 1));
 
-      // Reload reminders from Firestore to ensure UI is up to date
       setState(() {});
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -248,7 +309,6 @@ class _ProfileManagementScreenState extends State<ProfileManagementScreen>
     }
   }
 
-  // Delete reminder from Firestore
   Future<void> _deleteReminder(String reminderId, int index) async {
     try {
       await _firestore.collection('reminders').doc(reminderId).delete();
@@ -265,7 +325,6 @@ class _ProfileManagementScreenState extends State<ProfileManagementScreen>
     }
   }
 
-  // Helper function to show date time picker
   Future<DateTime?> showDateTimePicker({
     required BuildContext context,
     required DateTime initialDate,
@@ -319,26 +378,35 @@ class _ProfileManagementScreenState extends State<ProfileManagementScreen>
               : TabBarView(
                 controller: _tabController,
                 children: [
-                  // Profile Tab
                   FadeIn(
                     duration: const Duration(milliseconds: 500),
                     child: SingleChildScrollView(
                       padding: const EdgeInsets.all(AppSizes.defaultPadding),
                       child: Column(
                         children: [
-                          // Profile Picture
-                          CircleAvatar(
-                            radius: 50,
-                            backgroundColor: AppColors.primary.withOpacity(0.1),
-                            child: Icon(
-                              Icons.person,
-                              size: 70,
-                              color: AppColors.primary,
+                          GestureDetector(
+                            onTap: _pickAndUploadImage,
+                            child: CircleAvatar(
+                              radius: 50,
+                              backgroundColor: AppColors.primary.withOpacity(
+                                0.1,
+                              ),
+                              backgroundImage:
+                                  _userImage?.imageUrl != null
+                                      ? NetworkImage(_userImage!.imageUrl)
+                                      : null,
+                              child:
+                                  _userImage?.imageUrl == null
+                                      ? Icon(
+                                        Icons.person,
+                                        size: 70,
+                                        color: AppColors.primary,
+                                      )
+                                      : null,
                             ),
                           ),
                           const SizedBox(height: AppSizes.defaultPadding),
 
-                          // Profile Information Form
                           CustomTextField(
                             hintText: 'Enter your full name',
                             controller: _nameController,
@@ -349,7 +417,7 @@ class _ProfileManagementScreenState extends State<ProfileManagementScreen>
                             hintText: 'Enter your email',
                             controller: _emailController,
                             prefixIcon: Icons.email,
-                            enabled: false, // Email can't be changed
+                            enabled: false,
                           ),
                           const SizedBox(height: AppSizes.defaultPadding),
                           CustomTextField(
@@ -359,7 +427,6 @@ class _ProfileManagementScreenState extends State<ProfileManagementScreen>
                           ),
                           const SizedBox(height: AppSizes.largePadding),
 
-                          // Change Password Button
                           CustomButton(
                             text: 'Change Password',
                             color: AppColors.primary,
@@ -372,7 +439,6 @@ class _ProfileManagementScreenState extends State<ProfileManagementScreen>
                           ),
                           const SizedBox(height: AppSizes.defaultPadding),
 
-                          // Update and Logout Buttons
                           CustomButton(
                             text: 'Update Profile',
                             onPressed: _updateProfile,
@@ -388,7 +454,6 @@ class _ProfileManagementScreenState extends State<ProfileManagementScreen>
                     ),
                   ),
 
-                  // Reminders Tab
                   FadeIn(
                     duration: const Duration(milliseconds: 500),
                     child: Padding(
@@ -524,7 +589,6 @@ class _ProfileManagementScreenState extends State<ProfileManagementScreen>
                     ),
                   ),
 
-                  // Feedback Tab
                   FadeIn(
                     duration: const Duration(milliseconds: 500),
                     child: Padding(
@@ -532,7 +596,6 @@ class _ProfileManagementScreenState extends State<ProfileManagementScreen>
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          // Feedback form
                           const Text(
                             'We value your feedback!',
                             style: TextStyle(

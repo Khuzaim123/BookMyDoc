@@ -3,8 +3,12 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:animate_do/animate_do.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'dart:io';
 import '../models/doctor.dart';
 import '../models/reminder.dart';
+import '../models/user_image.dart';
 import '../constants/colors.dart';
 import '../constants/sizes.dart';
 import '../routes.dart';
@@ -12,7 +16,7 @@ import '../widgets/custom_button.dart';
 import '../widgets/custom_card.dart';
 
 class DoctorProfileScreen extends StatefulWidget {
-  final String? doctorId; // Made doctorId optional
+  final String? doctorId;
   final bool isOwnProfile;
 
   const DoctorProfileScreen({
@@ -31,8 +35,9 @@ class _DoctorProfileScreenState extends State<DoctorProfileScreen>
   bool _isEditing = false;
   bool _isLoading = true;
   late Doctor _doctor;
+  UserImage? _userImage;
+  String? _errorMessage;
 
-  // Controllers for editable fields
   late TextEditingController _nameController;
   late TextEditingController _emailController;
   late TextEditingController _specialtyController;
@@ -40,33 +45,34 @@ class _DoctorProfileScreenState extends State<DoctorProfileScreen>
   late TextEditingController _clinicAddressController;
   final Map<String, TextEditingController> _workingHoursControllers = {};
 
-  // For feedback tab
   final TextEditingController _feedbackController = TextEditingController();
 
-  // For reminders tab
   final List<Reminder> _reminders = [];
+
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseStorage _storage = FirebaseStorage.instance;
+  final ImagePicker _picker = ImagePicker();
 
   @override
   void initState() {
     super.initState();
 
-    // Initialize tab controller with appropriate number of tabs
     _tabController = TabController(
-      length: widget.isOwnProfile ? 3 : 1, // 3 tabs for doctor, 1 for patient
+      length: widget.isOwnProfile ? 3 : 1,
       vsync: this,
     );
 
-    // Initialize controllers with empty values initially
     _nameController = TextEditingController();
     _emailController = TextEditingController();
     _specialtyController = TextEditingController();
     _qualificationsController = TextEditingController();
     _clinicAddressController = TextEditingController();
 
-    // Fetch doctor data from Firestore
     _fetchDoctorData();
 
-    // Fetch reminders if this is doctor's own profile
+    _loadUserImage(widget.doctorId ?? _auth.currentUser?.uid);
+
     if (widget.isOwnProfile) {
       _fetchReminders();
     }
@@ -89,11 +95,9 @@ class _DoctorProfileScreenState extends State<DoctorProfileScreen>
     setState(() => _isLoading = true);
 
     try {
-      // Determine which doctor ID to use
       String doctorId =
           widget.doctorId ?? FirebaseAuth.instance.currentUser?.uid ?? '';
 
-      // Fetch doctor data from Firestore
       DocumentSnapshot doctorDoc =
           await FirebaseFirestore.instance
               .collection('doctors')
@@ -103,7 +107,6 @@ class _DoctorProfileScreenState extends State<DoctorProfileScreen>
       if (doctorDoc.exists) {
         Map<String, dynamic> data = doctorDoc.data() as Map<String, dynamic>;
 
-        // Convert working hours to the required format
         Map<String, String> workingHours = {};
         if (data['workingHours'] != null) {
           (data['workingHours'] as Map<String, dynamic>).forEach((key, value) {
@@ -111,7 +114,6 @@ class _DoctorProfileScreenState extends State<DoctorProfileScreen>
           });
         }
 
-        // Create Doctor object from Firestore data
         _doctor = Doctor(
           id: doctorDoc.id,
           name: data['name'] ?? 'Unknown Doctor',
@@ -125,19 +127,16 @@ class _DoctorProfileScreenState extends State<DoctorProfileScreen>
           consultationFee: (data['consultationFee'] as num?)?.toDouble(),
         );
 
-        // Update controllers with fetched data
         _nameController.text = _doctor.name;
         _emailController.text = _doctor.email;
         _specialtyController.text = _doctor.specialty;
         _qualificationsController.text = _doctor.qualifications;
         _clinicAddressController.text = _doctor.clinicAddress;
 
-        // Initialize working hours controllers
         _doctor.workingHours.forEach((day, hours) {
           _workingHoursControllers[day] = TextEditingController(text: hours);
         });
 
-        // Add default working hours controllers for days not in the database
         [
           'Monday',
           'Tuesday',
@@ -154,12 +153,10 @@ class _DoctorProfileScreenState extends State<DoctorProfileScreen>
           }
         });
       } else {
-        // Handle case where doctor doesn't exist
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Doctor profile not found')),
         );
 
-        // Initialize with empty doctor
         _doctor = Doctor(
           id: doctorId,
           name: 'Unknown Doctor',
@@ -170,7 +167,6 @@ class _DoctorProfileScreenState extends State<DoctorProfileScreen>
           workingHours: {},
         );
 
-        // Initialize default controllers
         [
           'Monday',
           'Tuesday',
@@ -186,12 +182,10 @@ class _DoctorProfileScreenState extends State<DoctorProfileScreen>
         });
       }
     } catch (e) {
-      // Handle errors
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error loading profile: ${e.toString()}')),
       );
 
-      // Initialize with empty doctor
       _doctor = Doctor(
         id: widget.doctorId ?? 'unknown',
         name: 'Error loading data',
@@ -202,7 +196,6 @@ class _DoctorProfileScreenState extends State<DoctorProfileScreen>
         workingHours: {},
       );
 
-      // Initialize default controllers
       [
         'Monday',
         'Tuesday',
@@ -217,16 +210,90 @@ class _DoctorProfileScreenState extends State<DoctorProfileScreen>
         );
       });
     } finally {
-      setState(() => _isLoading = false);
+      if (_userImage != null) {
+        setState(() => _isLoading = false);
+      } else if (_userImage == null) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  Future<void> _loadUserImage(String? userId) async {
+    if (userId == null) return;
+
+    try {
+      final userImageSnapshot =
+          await _firestore.collection('userImages').doc(userId).get();
+
+      if (userImageSnapshot.exists) {
+        final data = userImageSnapshot.data() as Map<String, dynamic>;
+        _userImage = UserImage.fromFirestore(data);
+      } else {
+        _userImage = null;
+      }
+    } catch (e) {
+      print('Error loading user image: $e');
+      _userImage = null;
+    } finally {
+      if (_doctor != null) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  Future<void> _pickAndUploadImage() async {
+    if (!widget.isOwnProfile) return;
+
+    final User? currentUser = _auth.currentUser;
+    if (currentUser == null) return;
+
+    try {
+      final XFile? pickedFile = await _picker.pickImage(
+        source: ImageSource.gallery,
+      );
+
+      if (pickedFile != null) {
+        final storageRef = _storage.ref().child(
+          'userImages/${currentUser.uid}/profile.png',
+        );
+
+        final uploadTask = storageRef.putFile(File(pickedFile.path));
+
+        final snapshot = await uploadTask.whenComplete(() {});
+        final downloadUrl = await snapshot.ref.getDownloadURL();
+
+        await _firestore.collection('userImages').doc(currentUser.uid).set({
+          'userId': currentUser.uid,
+          'imageUrl': downloadUrl,
+        });
+
+        setState(() {
+          _userImage = UserImage(
+            userId: currentUser.uid,
+            imageUrl: downloadUrl,
+          );
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Profile picture updated successfully!'),
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to upload picture: ${e.toString()}')),
+      );
+      print('Error uploading picture: $e');
     }
   }
 
   Future<void> _fetchReminders() async {
     try {
-      // Get doctor's ID
       String doctorId = FirebaseAuth.instance.currentUser?.uid ?? '';
 
-      // Fetch reminders from Firestore
+      if (doctorId.isEmpty) return;
+
       QuerySnapshot reminderDocs =
           await FirebaseFirestore.instance
               .collection('reminders')
@@ -238,7 +305,6 @@ class _DoctorProfileScreenState extends State<DoctorProfileScreen>
       for (var doc in reminderDocs.docs) {
         Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
 
-        // Convert Firestore timestamp to DateTime
         DateTime time;
         if (data['time'] is Timestamp) {
           time = (data['time'] as Timestamp).toDate();
@@ -264,12 +330,14 @@ class _DoctorProfileScreenState extends State<DoctorProfileScreen>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error loading reminders: ${e.toString()}')),
       );
+      print('Error loading reminders: $e');
     }
   }
 
   Future<void> _updateProfile() async {
+    if (!widget.isOwnProfile) return;
+
     try {
-      // Create updated data map
       Map<String, dynamic> updatedData = {
         'name': _nameController.text,
         'email': _emailController.text,
@@ -281,18 +349,16 @@ class _DoctorProfileScreenState extends State<DoctorProfileScreen>
         ),
       };
 
-      // Update Firestore document
       await FirebaseFirestore.instance
           .collection('doctors')
           .doc(_doctor.id)
           .update(updatedData);
 
-      // Update local doctor object
       setState(() {
         _doctor = Doctor(
           id: _doctor.id,
           name: _nameController.text,
-          email: _emailController.text,
+          email: _doctor.email,
           specialty: _specialtyController.text,
           qualifications: _qualificationsController.text,
           clinicAddress: _clinicAddressController.text,
@@ -312,11 +378,11 @@ class _DoctorProfileScreenState extends State<DoctorProfileScreen>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error updating profile: ${e.toString()}')),
       );
+      print('Error updating profile: $e');
     }
   }
 
   void _toggleEditMode() {
-    // Only allow editing if this is doctor's own profile
     if (!widget.isOwnProfile) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('You cannot edit this profile')),
@@ -326,28 +392,38 @@ class _DoctorProfileScreenState extends State<DoctorProfileScreen>
     setState(() {
       _isEditing = !_isEditing;
       if (!_isEditing) {
-        // Save changes when exiting edit mode
         _updateProfile();
+      } else {
+        _nameController.text = _doctor.name;
+        _emailController.text = _doctor.email;
+        _specialtyController.text = _doctor.specialty;
+        _qualificationsController.text = _doctor.qualifications;
+        _clinicAddressController.text = _doctor.clinicAddress;
+        _workingHoursControllers.forEach((day, controller) {
+          controller.text = _doctor.workingHours[day] ?? 'Not available';
+        });
       }
     });
   }
 
   Future<void> _submitFeedback() async {
-    if (_feedbackController.text.isEmpty) return;
+    if (_feedbackController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter your feedback')),
+      );
+      return;
+    }
 
     try {
-      // Get current user ID
       String userId = FirebaseAuth.instance.currentUser?.uid ?? 'anonymous';
 
-      // Create feedback data
       Map<String, dynamic> feedbackData = {
         'userId': userId,
         'content': _feedbackController.text,
         'timestamp': FieldValue.serverTimestamp(),
-        'userRole': 'doctor', // Since this is the doctor's profile
+        'userRole': 'doctor',
       };
 
-      // Save to Firestore
       await FirebaseFirestore.instance.collection('feedback').add(feedbackData);
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -358,24 +434,24 @@ class _DoctorProfileScreenState extends State<DoctorProfileScreen>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error submitting feedback: ${e.toString()}')),
       );
+      print('Error submitting feedback: $e');
     }
   }
 
   Future<void> _logout() async {
     try {
       await FirebaseAuth.instance.signOut();
-      // Navigate to login screen after successful logout
       if (!mounted) return;
       Navigator.pushReplacementNamed(context, RouteNames.login);
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error signing out: ${e.toString()}')),
       );
+      print('Error signing out: $e');
     }
   }
 
   Future<void> _addReminder() async {
-    // Show dialog to add a new reminder
     showDialog(
       context: context,
       builder: (context) {
@@ -446,7 +522,6 @@ class _DoctorProfileScreenState extends State<DoctorProfileScreen>
                   return;
                 }
 
-                // Create DateTime from selected date and time
                 final DateTime reminderTime = DateTime(
                   selectedDate.year,
                   selectedDate.month,
@@ -455,18 +530,25 @@ class _DoctorProfileScreenState extends State<DoctorProfileScreen>
                   selectedTime.minute,
                 );
 
-                // Save reminder to Firestore
                 try {
-                  String patientId =
+                  String doctorId =
                       FirebaseAuth.instance.currentUser?.uid ?? '';
+                  if (doctorId.isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('User not authenticated to add reminder'),
+                      ),
+                    );
+                    return;
+                  }
+
                   await FirebaseFirestore.instance.collection('reminders').add({
-                    'patientId': patientId,
+                    'patientId': doctorId,
                     'task': taskController.text,
                     'time': Timestamp.fromDate(reminderTime),
                     'isCompleted': false,
                   });
 
-                  // Refresh reminders list
                   _fetchReminders();
 
                   Navigator.pop(context);
@@ -476,6 +558,7 @@ class _DoctorProfileScreenState extends State<DoctorProfileScreen>
                       content: Text('Error saving reminder: ${e.toString()}'),
                     ),
                   );
+                  print('Error saving reminder: $e');
                 }
               },
               child: const Text('Add'),
@@ -486,7 +569,6 @@ class _DoctorProfileScreenState extends State<DoctorProfileScreen>
     );
   }
 
-  // UI Building Methods
   Widget _buildSection({
     required String title,
     required List<Widget> children,
@@ -616,19 +698,28 @@ class _DoctorProfileScreenState extends State<DoctorProfileScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Profile Header with Image and Name
           FadeInUp(
             duration: const Duration(milliseconds: 300),
             child: Center(
               child: Column(
                 children: [
-                  CircleAvatar(
-                    radius: 60,
-                    backgroundColor: AppColors.primary.withOpacity(0.2),
-                    child: Icon(
-                      Icons.person,
-                      size: 60,
-                      color: AppColors.primary,
+                  GestureDetector(
+                    onTap: isOwnProfile ? _pickAndUploadImage : null,
+                    child: CircleAvatar(
+                      radius: 60,
+                      backgroundColor: AppColors.primary.withOpacity(0.2),
+                      backgroundImage:
+                          _userImage?.imageUrl != null
+                              ? NetworkImage(_userImage!.imageUrl)
+                              : null,
+                      child:
+                          _userImage?.imageUrl == null
+                              ? Icon(
+                                Icons.person,
+                                size: 60,
+                                color: AppColors.primary,
+                              )
+                              : null,
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -676,7 +767,6 @@ class _DoctorProfileScreenState extends State<DoctorProfileScreen>
 
           const SizedBox(height: AppSizes.largePadding),
 
-          // Specialty
           FadeInUp(
             delay: const Duration(milliseconds: 100),
             child: _buildSection(
@@ -695,7 +785,6 @@ class _DoctorProfileScreenState extends State<DoctorProfileScreen>
 
           const SizedBox(height: AppSizes.defaultPadding),
 
-          // Qualifications
           FadeInUp(
             delay: const Duration(milliseconds: 150),
             child: _buildSection(
@@ -714,7 +803,6 @@ class _DoctorProfileScreenState extends State<DoctorProfileScreen>
 
           const SizedBox(height: AppSizes.defaultPadding),
 
-          // Contact Information
           FadeInUp(
             delay: const Duration(milliseconds: 200),
             child: _buildSection(
@@ -726,7 +814,7 @@ class _DoctorProfileScreenState extends State<DoctorProfileScreen>
                   controller: _emailController,
                   isEditing: _isEditing && isOwnProfile,
                   value: _doctor.email,
-                  enabled: false, // Email not editable
+                  enabled: false,
                 ),
                 _buildInfoItem(
                   icon: Icons.location_on,
@@ -741,7 +829,6 @@ class _DoctorProfileScreenState extends State<DoctorProfileScreen>
 
           const SizedBox(height: AppSizes.defaultPadding),
 
-          // Working Hours
           FadeInUp(
             delay: const Duration(milliseconds: 250),
             child: _buildSection(
@@ -770,7 +857,6 @@ class _DoctorProfileScreenState extends State<DoctorProfileScreen>
 
           const SizedBox(height: AppSizes.defaultPadding),
 
-          // Book Appointment Button (only show when a patient is viewing)
           if (!isOwnProfile)
             FadeInUp(
               delay: const Duration(milliseconds: 300),
@@ -807,7 +893,6 @@ class _DoctorProfileScreenState extends State<DoctorProfileScreen>
               ),
             ),
 
-          // Logout Button (only for Doctor's own profile)
           if (isOwnProfile)
             FadeInUp(
               delay: const Duration(milliseconds: 300),
@@ -908,7 +993,6 @@ class _DoctorProfileScreenState extends State<DoctorProfileScreen>
                             ),
                           ),
                           onDismissed: (direction) async {
-                            // Remove from Firestore
                             try {
                               await FirebaseFirestore.instance
                                   .collection('reminders')
@@ -926,6 +1010,7 @@ class _DoctorProfileScreenState extends State<DoctorProfileScreen>
                                   ),
                                 ),
                               );
+                              print('Error deleting reminder: $e');
                             }
                           },
                           child: Card(
@@ -1013,7 +1098,6 @@ class _DoctorProfileScreenState extends State<DoctorProfileScreen>
         ],
         bottom: TabBar(
           controller: _tabController,
-          // Show appropriate tabs based on who is viewing
           tabs:
               isOwnProfile
                   ? const [
@@ -1029,9 +1113,12 @@ class _DoctorProfileScreenState extends State<DoctorProfileScreen>
               ? Center(
                 child: CircularProgressIndicator(color: AppColors.primary),
               )
+              : _doctor == null
+              ? Center(
+                child: Text(_errorMessage ?? 'Error loading profile data'),
+              )
               : TabBarView(
                 controller: _tabController,
-                // Match the TabBar with the appropriate tabs content
                 children:
                     isOwnProfile
                         ? [

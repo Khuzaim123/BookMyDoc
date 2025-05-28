@@ -1,9 +1,11 @@
 import 'package:bookmydoc2/firebase_options.dart';
 import 'package:bookmydoc2/routes.dart';
+import 'package:bookmydoc2/screens/splash_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -21,10 +23,11 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         primarySwatch: Colors.blue,
         scaffoldBackgroundColor: Colors.white,
+        textTheme: GoogleFonts.poppinsTextTheme(Theme.of(context).textTheme),
         visualDensity: VisualDensity.adaptivePlatformDensity,
       ),
       debugShowCheckedModeBanner: false,
-      home: const AuthWrapper(),
+      home: const SplashScreen(),
       onGenerateRoute: generateRoute,
     );
   }

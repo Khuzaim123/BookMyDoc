@@ -16,7 +16,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:animate_do/animate_do.dart';
 import 'package:intl/intl.dart';
-import 'package:advance_pdf_viewer/advance_pdf_viewer.dart';
+import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 
 class DoctorMessageScreen extends StatefulWidget {
   final String patientId;
@@ -42,6 +42,7 @@ class _DoctorMessageScreenState extends State<DoctorMessageScreen> {
   bool _isLoading = true;
   String? _error;
   bool _isUploading = false;
+  int _prevMessageCount = 0;
 
   @override
   void initState() {
@@ -223,9 +224,6 @@ class _DoctorMessageScreenState extends State<DoctorMessageScreen> {
         });
         _messageController.clear();
       }
-
-      await _fetchPatient();
-      Future.delayed(const Duration(milliseconds: 100), _scrollToBottom);
     } catch (e) {
       ScaffoldMessenger.of(
         context,
@@ -251,51 +249,23 @@ class _DoctorMessageScreenState extends State<DoctorMessageScreen> {
   }
 
   Future<void> _showPDFDialog(String url) async {
-    PDFDocument? document;
-    bool loading = true;
-    String? error;
     await showDialog(
       context: context,
       barrierDismissible: true,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setState) {
-            if (loading) {
-              PDFDocument.fromURL(url)
-                  .then((doc) {
-                    setState(() {
-                      document = doc;
-                      loading = false;
-                    });
-                  })
-                  .catchError((e) {
-                    setState(() {
-                      error = e.toString();
-                      loading = false;
-                    });
-                  });
-            }
-            return Dialog(
-              backgroundColor: Colors.black,
-              child: SizedBox(
-                width: MediaQuery.of(context).size.width * 0.9,
-                height: MediaQuery.of(context).size.height * 0.8,
-                child:
-                    loading
-                        ? const Center(child: CircularProgressIndicator())
-                        : error != null
-                        ? Center(
-                          child: Text(
-                            'Failed to load PDF',
-                            style: TextStyle(color: Colors.white),
-                          ),
-                        )
-                        : PDFViewer(document: document!),
+      builder:
+          (context) => Dialog(
+            backgroundColor: Colors.black,
+            child: SizedBox(
+              width: MediaQuery.of(context).size.width * 0.9,
+              height: MediaQuery.of(context).size.height * 0.8,
+              child: SfPdfViewer.network(
+                url,
+                canShowPaginationDialog: true,
+                canShowScrollHead: true,
+                enableDoubleTapZooming: true,
               ),
-            );
-          },
-        );
-      },
+            ),
+          ),
     );
   }
 
@@ -467,201 +437,209 @@ class _DoctorMessageScreenState extends State<DoctorMessageScreen> {
               ? Center(
                 child: Text(_error!, style: TextStyle(color: Colors.red)),
               )
-              : StreamBuilder<QuerySnapshot>(
-                stream:
-                    _firestore
-                        .collection('messages')
-                        .where('participants', arrayContains: user?.uid)
-                        .orderBy('timestamp', descending: false)
-                        .snapshots(),
-                builder: (context, snapshot) {
-                  if (snapshot.hasError) {
-                    return Center(
-                      child: Text(
-                        'Error: ${snapshot.error}',
-                        style: TextStyle(color: Colors.red),
-                      ),
-                    );
-                  }
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-                  final docs = snapshot.data?.docs ?? [];
-                  final messages =
-                      docs
-                          .map((doc) {
-                            final data = doc.data() as Map<String, dynamic>;
-                            if ((data['senderId'] == user?.uid &&
-                                    data['receiverId'] == widget.patientId) ||
-                                (data['senderId'] == widget.patientId &&
-                                    data['receiverId'] == user?.uid)) {
-                              DateTime timestamp;
-                              if (data['timestamp'] == null) {
-                                timestamp = DateTime.now();
-                              } else if (data['timestamp'] is Timestamp) {
-                                timestamp =
-                                    (data['timestamp'] as Timestamp).toDate();
-                              } else {
-                                timestamp = DateTime.now();
-                              }
+              : Column(
+                children: [
+                  Expanded(
+                    child: StreamBuilder<QuerySnapshot>(
+                      stream:
+                          _firestore
+                              .collection('messages')
+                              .where('participants', arrayContains: user?.uid)
+                              .orderBy('timestamp', descending: false)
+                              .snapshots(),
+                      builder: (context, snapshot) {
+                        if (snapshot.hasError) {
+                          return Center(
+                            child: Text(
+                              'Error: ${snapshot.error}',
+                              style: TextStyle(color: Colors.red),
+                            ),
+                          );
+                        }
+                        if (snapshot.connectionState ==
+                            ConnectionState.waiting) {
+                          return const Center(
+                            child: CircularProgressIndicator(),
+                          );
+                        }
+                        final docs = snapshot.data?.docs ?? [];
+                        final messages =
+                            docs
+                                .map((doc) {
+                                  final data =
+                                      doc.data() as Map<String, dynamic>;
+                                  if ((data['senderId'] == user?.uid &&
+                                          data['receiverId'] ==
+                                              widget.patientId) ||
+                                      (data['senderId'] == widget.patientId &&
+                                          data['receiverId'] == user?.uid)) {
+                                    DateTime timestamp;
+                                    if (data['timestamp'] == null) {
+                                      timestamp = DateTime.now();
+                                    } else if (data['timestamp'] is Timestamp) {
+                                      timestamp =
+                                          (data['timestamp'] as Timestamp)
+                                              .toDate();
+                                    } else {
+                                      timestamp = DateTime.now();
+                                    }
 
-                              return Message(
-                                id: doc.id,
-                                senderId: data['senderId'],
-                                receiverId: data['receiverId'],
-                                content: data['content'],
-                                timestamp: timestamp,
-                                isRead: data['isRead'] ?? false,
-                                type:
-                                    data['type'] == 'image'
-                                        ? MessageType.image
-                                        : data['type'] == 'pdf'
-                                        ? MessageType.pdf
-                                        : MessageType.text,
-                                fileName: data['fileName'],
-                              );
-                            }
-                            return null;
-                          })
-                          .whereType<Message>()
-                          .toList();
-
-                  WidgetsBinding.instance.addPostFrameCallback(
-                    (_) => _scrollToBottom(),
-                  );
-
-                  return Column(
-                    children: [
-                      Expanded(
-                        child:
-                            messages.isEmpty
-                                ? Center(
-                                  child: Text(
-                                    'No messages yet. Start the conversation!',
-                                    style: GoogleFonts.poppins(
-                                      color: AppColors.textSecondary,
-                                    ),
-                                  ),
-                                )
-                                : ListView.builder(
-                                  controller: _scrollController,
-                                  padding: const EdgeInsets.all(
-                                    AppSizes.defaultPadding,
-                                  ),
-                                  itemCount: messages.length,
-                                  itemBuilder: (context, index) {
-                                    final message = messages[index];
-                                    final isFromDoctor =
-                                        user != null &&
-                                        message.senderId == user.uid;
-                                    return FadeInUp(
-                                      from: 10,
-                                      delay: Duration(milliseconds: index * 50),
-                                      child: _buildMessageBubble(
-                                        message,
-                                        isFromDoctor,
-                                      ),
+                                    return Message(
+                                      id: doc.id,
+                                      senderId: data['senderId'],
+                                      receiverId: data['receiverId'],
+                                      content: data['content'],
+                                      timestamp: timestamp,
+                                      isRead: data['isRead'] ?? false,
+                                      type:
+                                          data['type'] == 'image'
+                                              ? MessageType.image
+                                              : data['type'] == 'pdf'
+                                              ? MessageType.pdf
+                                              : MessageType.text,
+                                      fileName: data['fileName'],
                                     );
-                                  },
+                                  }
+                                  return null;
+                                })
+                                .whereType<Message>()
+                                .toList();
+
+                        if (messages.length > _prevMessageCount) {
+                          WidgetsBinding.instance.addPostFrameCallback(
+                            (_) => _scrollToBottom(),
+                          );
+                        }
+                        _prevMessageCount = messages.length;
+
+                        return messages.isEmpty
+                            ? Center(
+                              child: Text(
+                                'No messages yet. Start the conversation!',
+                                style: GoogleFonts.poppins(
+                                  color: AppColors.textSecondary,
                                 ),
-                      ),
-                      if (_selectedFile != null)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: AppSizes.defaultPadding,
-                            vertical: 8,
-                          ),
-                          color: Colors.grey[100],
-                          child: Row(
-                            children: [
-                              Icon(
-                                _selectedFileType == MessageType.image
-                                    ? Icons.image
-                                    : Icons.insert_drive_file,
-                                color: AppColors.primary,
                               ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  _selectedFileName ?? 'File selected',
-                                  style: GoogleFonts.poppins(
-                                    color: AppColors.textPrimary,
+                            )
+                            : ListView.builder(
+                              controller: _scrollController,
+                              padding: const EdgeInsets.all(
+                                AppSizes.defaultPadding,
+                              ),
+                              itemCount: messages.length,
+                              itemBuilder: (context, index) {
+                                final message = messages[index];
+                                final isFromDoctor =
+                                    user != null &&
+                                    message.senderId == user.uid;
+                                return FadeInUp(
+                                  from: 10,
+                                  delay: Duration(milliseconds: index * 50),
+                                  child: _buildMessageBubble(
+                                    message,
+                                    isFromDoctor,
                                   ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
+                                );
+                              },
+                            );
+                      },
+                    ),
+                  ),
+                  if (_selectedFile != null)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: AppSizes.defaultPadding,
+                        vertical: 8,
+                      ),
+                      color: Colors.grey[100],
+                      child: Row(
+                        children: [
+                          Icon(
+                            _selectedFileType == MessageType.image
+                                ? Icons.image
+                                : Icons.insert_drive_file,
+                            color: AppColors.primary,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _selectedFileName ?? 'File selected',
+                              style: GoogleFonts.poppins(
+                                color: AppColors.textPrimary,
                               ),
-                              IconButton(
-                                icon: const Icon(Icons.close),
-                                onPressed:
-                                    () => setState(() {
-                                      _selectedFile = null;
-                                      _selectedFileName = null;
-                                      _selectedFileType = MessageType.text;
-                                    }),
-                                color: AppColors.error,
-                                iconSize: 20,
-                              ),
-                            ],
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close),
+                            onPressed:
+                                () => setState(() {
+                                  _selectedFile = null;
+                                  _selectedFileName = null;
+                                  _selectedFileType = MessageType.text;
+                                }),
+                            color: AppColors.error,
+                            iconSize: 20,
+                          ),
+                        ],
+                      ),
+                    ),
+                  Container(
+                    padding: const EdgeInsets.all(AppSizes.defaultPadding),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.grey.withOpacity(0.2),
+                          spreadRadius: 1,
+                          blurRadius: 5,
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        IconButton(
+                          icon: const Icon(
+                            Icons.attach_file,
+                            color: AppColors.primary,
+                          ),
+                          onPressed:
+                              _isUploading
+                                  ? null
+                                  : _showFileTypeSelectionDialog,
+                        ),
+                        Expanded(
+                          child: CustomTextField(
+                            hintText: 'Type a message...',
+                            controller: _messageController,
+                            maxLines: 3,
+                            enabled: !_isUploading,
                           ),
                         ),
-                      Container(
-                        padding: const EdgeInsets.all(AppSizes.defaultPadding),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.grey.withOpacity(0.2),
-                              spreadRadius: 1,
-                              blurRadius: 5,
-                            ),
-                          ],
-                        ),
-                        child: Row(
-                          children: [
-                            IconButton(
+                        _isUploading
+                            ? const Padding(
+                              padding: EdgeInsets.all(12.0),
+                              child: SizedBox(
+                                width: 24,
+                                height: 24,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: AppColors.primary,
+                                ),
+                              ),
+                            )
+                            : IconButton(
                               icon: const Icon(
-                                Icons.attach_file,
+                                Icons.send,
                                 color: AppColors.primary,
                               ),
-                              onPressed:
-                                  _isUploading
-                                      ? null
-                                      : _showFileTypeSelectionDialog,
+                              onPressed: _sendMessage,
                             ),
-                            Expanded(
-                              child: CustomTextField(
-                                hintText: 'Type a message...',
-                                controller: _messageController,
-                                maxLines: 3,
-                                enabled: !_isUploading,
-                              ),
-                            ),
-                            _isUploading
-                                ? const Padding(
-                                  padding: EdgeInsets.all(12.0),
-                                  child: SizedBox(
-                                    width: 24,
-                                    height: 24,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: AppColors.primary,
-                                    ),
-                                  ),
-                                )
-                                : IconButton(
-                                  icon: const Icon(
-                                    Icons.send,
-                                    color: AppColors.primary,
-                                  ),
-                                  onPressed: _sendMessage,
-                                ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  );
-                },
+                      ],
+                    ),
+                  ),
+                ],
               ),
     );
   }

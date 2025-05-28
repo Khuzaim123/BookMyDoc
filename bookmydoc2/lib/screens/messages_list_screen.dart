@@ -8,6 +8,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../models/user_image.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class MessagesListScreen extends StatefulWidget {
   const MessagesListScreen({super.key});
@@ -103,6 +105,7 @@ class _MessagesListScreenState extends State<MessagesListScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final user = _auth.currentUser;
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -116,16 +119,13 @@ class _MessagesListScreenState extends State<MessagesListScreen> {
         ),
       ),
       body:
-          _auth.currentUser == null
+          user == null
               ? Center(child: Text('Not logged in'))
               : StreamBuilder<QuerySnapshot>(
                 stream:
                     _firestore
                         .collection('messages')
-                        .where(
-                          'participants',
-                          arrayContains: _auth.currentUser!.uid,
-                        )
+                        .where('participants', arrayContains: user.uid)
                         .orderBy('timestamp', descending: true)
                         .snapshots(),
                 builder: (context, snapshot) {
@@ -146,10 +146,12 @@ class _MessagesListScreenState extends State<MessagesListScreen> {
                   }
                   if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
                     return Center(
-                      child: Text(
-                        'No messages yet',
-                        style: GoogleFonts.poppins(
-                          color: AppColors.textSecondary,
+                      child: FadeInUp(
+                        child: Text(
+                          'No messages yet',
+                          style: GoogleFonts.poppins(
+                            color: AppColors.textLight,
+                          ),
                         ),
                       ),
                     );
@@ -164,7 +166,7 @@ class _MessagesListScreenState extends State<MessagesListScreen> {
                     );
                     if (participants.length != 2) continue;
                     final otherUserId = participants.firstWhere(
-                      (id) => id != _auth.currentUser!.uid,
+                      (id) => id != user.uid,
                       orElse: () => '',
                     );
                     if (otherUserId.isEmpty) continue;
@@ -172,7 +174,8 @@ class _MessagesListScreenState extends State<MessagesListScreen> {
                       conversationMap[otherUserId] = {
                         'conversationId': doc.id,
                         'userId': otherUserId,
-                        'userName': 'Unknown', // We'll fetch below
+                        'userName': 'Unknown',
+                        'imageUrl': null,
                         'latestMessage': Message.fromJson({
                           ...data,
                           'id': doc.id,
@@ -190,7 +193,7 @@ class _MessagesListScreenState extends State<MessagesListScreen> {
                   final conversations = conversationMap.values.toList();
 
                   return FutureBuilder(
-                    future: _fetchUserNames(conversations),
+                    future: _fetchUserDataForConversations(conversations),
                     builder: (context, userSnapshot) {
                       if (userSnapshot.connectionState ==
                           ConnectionState.waiting) {
@@ -207,6 +210,7 @@ class _MessagesListScreenState extends State<MessagesListScreen> {
                           final conversation = conversations[index];
                           final otherUserId = conversation['userId'];
                           final otherUserName = conversation['userName'];
+                          final imageUrl = conversation['imageUrl'];
                           final latestMessage =
                               conversation['latestMessage'] as Message;
                           return FadeInUp(
@@ -227,12 +231,29 @@ class _MessagesListScreenState extends State<MessagesListScreen> {
                                 child: ListTile(
                                   leading: Stack(
                                     children: [
-                                      const CircleAvatar(
-                                        backgroundColor: AppColors.primary,
-                                        child: Icon(
-                                          Icons.person,
-                                          color: Colors.white,
-                                        ),
+                                      CircleAvatar(
+                                        radius: 24,
+                                        backgroundColor: AppColors.primary
+                                            .withOpacity(0.1),
+                                        backgroundImage:
+                                            imageUrl != null
+                                                ? CachedNetworkImageProvider(
+                                                  imageUrl,
+                                                )
+                                                : null,
+                                        child:
+                                            imageUrl == null
+                                                ? Text(
+                                                  otherUserName.isNotEmpty
+                                                      ? otherUserName[0]
+                                                          .toUpperCase()
+                                                      : '?',
+                                                  style: GoogleFonts.poppins(
+                                                    color: AppColors.primary,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                )
+                                                : null,
                                       ),
                                       if (!latestMessage.isRead)
                                         Positioned(
@@ -286,7 +307,7 @@ class _MessagesListScreenState extends State<MessagesListScreen> {
                                           style: GoogleFonts.poppins(
                                             color:
                                                 latestMessage.isRead
-                                                    ? AppColors.textSecondary
+                                                    ? AppColors.textLight
                                                     : AppColors.textPrimary,
                                             fontWeight:
                                                 !latestMessage.isRead
@@ -303,7 +324,7 @@ class _MessagesListScreenState extends State<MessagesListScreen> {
                                     _formatTimestamp(latestMessage.timestamp),
                                     style: GoogleFonts.poppins(
                                       fontSize: 12,
-                                      color: AppColors.textSecondary,
+                                      color: AppColors.textLight,
                                     ),
                                   ),
                                 ),
@@ -327,8 +348,9 @@ class _MessagesListScreenState extends State<MessagesListScreen> {
     return '${timestamp.day}/${timestamp.month}';
   }
 
-  // Helper to fetch user names for all conversations
-  Future<void> _fetchUserNames(List<Map<String, dynamic>> conversations) async {
+  Future<void> _fetchUserDataForConversations(
+    List<Map<String, dynamic>> conversations,
+  ) async {
     final firestore = FirebaseFirestore.instance;
     for (final conversation in conversations) {
       final otherUserId = conversation['userId'];
@@ -336,6 +358,14 @@ class _MessagesListScreenState extends State<MessagesListScreen> {
           await firestore.collection('users').doc(otherUserId).get();
       if (userDoc.exists) {
         conversation['userName'] = userDoc.data()?['name'] ?? 'Unknown';
+      }
+      final userImageDoc =
+          await firestore.collection('userImages').doc(otherUserId).get();
+      if (userImageDoc.exists) {
+        final imageData = userImageDoc.data() as Map<String, dynamic>;
+        conversation['imageUrl'] = imageData['imageUrl'];
+      } else {
+        conversation['imageUrl'] = null;
       }
     }
   }

@@ -15,7 +15,8 @@ import 'package:intl/intl.dart';
 
 import 'package:flutter/foundation.dart';
 import 'dart:typed_data';
-import 'package:advance_pdf_viewer/advance_pdf_viewer.dart';
+import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class MessageScreen extends StatefulWidget {
   final String doctorId;
@@ -162,6 +163,7 @@ class _MessageScreenState extends State<MessageScreen> {
       return;
     }
 
+    if (!mounted) return;
     setState(() {
       _isUploading = true;
     });
@@ -174,6 +176,7 @@ class _MessageScreenState extends State<MessageScreen> {
         fileUrl = await _uploadFile();
       }
 
+      if (!mounted) return;
       // Prepare the message data
       final messageData = {
         'senderId': currentUser.uid,
@@ -192,6 +195,7 @@ class _MessageScreenState extends State<MessageScreen> {
           'fileName': _selectedFileName,
         });
 
+        if (!mounted) return;
         setState(() {
           _selectedFile = null;
           _selectedFileName = null;
@@ -207,14 +211,16 @@ class _MessageScreenState extends State<MessageScreen> {
           'type': 'text',
         });
 
+        if (!mounted) return;
         _messageController.clear();
       }
     } catch (e) {
-      print('Error sending message: $e');
+      if (!mounted) return;
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Failed to send message: $e')));
     } finally {
+      if (!mounted) return;
       setState(() {
         _isUploading = false;
       });
@@ -248,6 +254,7 @@ class _MessageScreenState extends State<MessageScreen> {
   Future<void> _pickImage() async {
     final ImagePicker picker = ImagePicker();
     final XFile? image = await picker.pickImage(source: ImageSource.gallery);
+    if (!mounted) return;
     if (image != null) {
       setState(() {
         _selectedFile = File(image.path);
@@ -264,16 +271,17 @@ class _MessageScreenState extends State<MessageScreen> {
       type: FileType.custom,
       allowedExtensions: ['pdf'],
     );
-    if (result != null && result.files.isNotEmpty) {
-      final path = result.files.first.path;
-      if (path != null) {
-        setState(() {
-          _selectedFile = File(path);
-          _selectedFileBytes = null;
-          _selectedFileName = result.files.first.name;
-          _selectedFileType = MessageType.pdf;
-        });
-      }
+    if (!mounted) return;
+    if (result != null &&
+        result.files.isNotEmpty &&
+        result.files.first.path != null) {
+      final path = result.files.first.path!;
+      setState(() {
+        _selectedFile = File(path);
+        _selectedFileBytes = null;
+        _selectedFileName = result.files.first.name;
+        _selectedFileType = MessageType.pdf;
+      });
     }
   }
 
@@ -300,51 +308,23 @@ class _MessageScreenState extends State<MessageScreen> {
   }
 
   Future<void> _showPDFDialog(String url) async {
-    PDFDocument? document;
-    bool loading = true;
-    String? error;
     await showDialog(
       context: context,
       barrierDismissible: true,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setState) {
-            if (loading) {
-              PDFDocument.fromURL(url)
-                  .then((doc) {
-                    setState(() {
-                      document = doc;
-                      loading = false;
-                    });
-                  })
-                  .catchError((e) {
-                    setState(() {
-                      error = e.toString();
-                      loading = false;
-                    });
-                  });
-            }
-            return Dialog(
-              backgroundColor: Colors.black,
-              child: SizedBox(
-                width: MediaQuery.of(context).size.width * 0.9,
-                height: MediaQuery.of(context).size.height * 0.8,
-                child:
-                    loading
-                        ? const Center(child: CircularProgressIndicator())
-                        : error != null
-                        ? Center(
-                          child: Text(
-                            'Failed to load PDF',
-                            style: TextStyle(color: Colors.white),
-                          ),
-                        )
-                        : PDFViewer(document: document!),
+      builder:
+          (context) => Dialog(
+            backgroundColor: Colors.black,
+            child: SizedBox(
+              width: MediaQuery.of(context).size.width * 0.9,
+              height: MediaQuery.of(context).size.height * 0.8,
+              child: SfPdfViewer.network(
+                url,
+                canShowPaginationDialog: true,
+                canShowScrollHead: true,
+                enableDoubleTapZooming: true,
               ),
-            );
-          },
-        );
-      },
+            ),
+          ),
     );
   }
 
@@ -396,7 +376,7 @@ class _MessageScreenState extends State<MessageScreen> {
               ? const Center(child: CircularProgressIndicator())
               : Column(
                 children: [
-                  // Messages list
+                  // Messages list with StreamBuilder
                   Expanded(
                     child:
                         messages.isEmpty

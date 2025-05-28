@@ -7,7 +7,7 @@ import '../models/health_record.dart';
 import '../constants/colors.dart';
 import '../constants/sizes.dart';
 import 'package:flutter/foundation.dart';
-import 'package:advance_pdf_viewer/advance_pdf_viewer.dart';
+import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 
 class HealthRecordViewerScreen extends StatefulWidget {
   final HealthRecord record;
@@ -112,51 +112,23 @@ class _HealthRecordViewerScreenState extends State<HealthRecordViewerScreen> {
     final fileName = (widget.record as dynamic).fileName ?? url;
     debugPrint('Attempting to open file: $url (fileName: $fileName)');
     if (fileName.toLowerCase().endsWith('.pdf')) {
-      PDFDocument? document;
-      bool loading = true;
-      String? error;
       await showDialog(
         context: context,
         barrierDismissible: true,
-        builder: (context) {
-          return StatefulBuilder(
-            builder: (context, setState) {
-              if (loading) {
-                PDFDocument.fromURL(url)
-                    .then((doc) {
-                      setState(() {
-                        document = doc;
-                        loading = false;
-                      });
-                    })
-                    .catchError((e) {
-                      setState(() {
-                        error = e.toString();
-                        loading = false;
-                      });
-                    });
-              }
-              return Dialog(
-                backgroundColor: Colors.black,
-                child: SizedBox(
-                  width: MediaQuery.of(context).size.width * 0.9,
-                  height: MediaQuery.of(context).size.height * 0.8,
-                  child:
-                      loading
-                          ? const Center(child: CircularProgressIndicator())
-                          : error != null
-                          ? Center(
-                            child: Text(
-                              'Failed to load PDF',
-                              style: TextStyle(color: Colors.white),
-                            ),
-                          )
-                          : PDFViewer(document: document!),
+        builder:
+            (context) => Dialog(
+              backgroundColor: Colors.black,
+              child: SizedBox(
+                width: MediaQuery.of(context).size.width * 0.9,
+                height: MediaQuery.of(context).size.height * 0.8,
+                child: SfPdfViewer.network(
+                  url,
+                  canShowPaginationDialog: true,
+                  canShowScrollHead: true,
+                  enableDoubleTapZooming: true,
                 ),
-              );
-            },
-          );
-        },
+              ),
+            ),
       );
     } else if (fileName.toLowerCase().endsWith('.jpg') ||
         fileName.toLowerCase().endsWith('.jpeg') ||

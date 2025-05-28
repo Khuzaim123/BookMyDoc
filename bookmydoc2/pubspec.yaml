@@ -53,21 +53,37 @@ dependencies:
   google_sign_in: ^6.1.5
   firebase_storage: ^12.4.5
   permission_handler: ^11.3.0
-  advance_pdf_viewer: ^2.0.1
+  syncfusion_flutter_pdfviewer: 29.1.41  # Modern PDF viewer with better features and performance
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^5.0.0           # Code quality and linting
+  flutter_launcher_icons: ^0.13.1  # For updating app icons
 
 flutter:
   uses-material-design: true
-#  assets:
-#    - assets/images/
-#    - assets/icons/
-#    - assets/lottie/
-#
-#  plugin:
-#    platforms:
-#      macos:
-#        default_package: none
+
+  assets:
+    - assets/images/
+    - assets/icons/
+    - assets/lottie/
+
+  # plugin:
+  #   platforms:
+  #     macos:
+  #       default_package: none
+
+flutter_launcher_icons:
+  android: "launcher_icon"
+  windows:
+    generate: true
+    icon_path: "assets/images/logo.png"
+    min_sdk_win: 10
+  web:
+    generate: true
+    image_path: "assets/images/logo.png"
+  image_path: "assets/images/logo.png"
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/images/logo.png"
+  remove_alpha_ios: true

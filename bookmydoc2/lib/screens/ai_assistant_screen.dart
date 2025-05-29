@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http; // Import http package
 import 'dart:convert'; // Import convert for JSON encoding/decoding
+import 'dart:async'; // Add this import for TimeoutException
 
 class AiAssistantScreen extends StatefulWidget {
   const AiAssistantScreen({super.key});
@@ -37,12 +38,11 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
   // Function to send message to OpenRouter API
   Future<void> _sendToOpenRouter(String message) async {
     if (_openRouterApiKey == '<YOUR_OPENROUTER_API_KEY>') {
-      // Show an error if API key is not set
       setState(() {
         chatMessages.add({
           'role': 'assistant',
           'content':
-              'Error: OpenRouter API key is not set. Please replace <YOUR_OPENROUTER_API_KEY> with your key.',
+              'Error: OpenRouter API key is not set. Please contact support.',
         });
         _isLoadingResponse = false;
       });
@@ -57,56 +57,89 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
       final headers = {
         'Authorization': 'Bearer $_openRouterApiKey',
         'Content-Type': 'application/json',
-        // Optional headers:
-        // 'HTTP-Referer': '<YOUR_SITE_URL>',
-        // 'X-Title': '<YOUR_SITE_NAME>',
+        'HTTP-Referer': 'https://bookmydoc.com',
+        'X-Title': 'BookMyDoc',
       };
 
-      // Construct the messages list including previous messages for context
+      print('Request Headers: $headers'); // Debug log: Print headers
+
       final messagesPayload =
           chatMessages
               .map((msg) => {'role': msg['role'], 'content': msg['content']})
               .toList();
-      // Add the current user message to the payload
       messagesPayload.add({'role': 'user', 'content': message});
 
       final body = jsonEncode({
-        'model':
-            'deepseek/deepseek-chat', // Using deepseek-chat as it's generally preferred over r1 for conversations
+        'model': 'deepseek/deepseek-chat',
         'messages': messagesPayload,
+        'temperature': 0.7,
+        'max_tokens': 1000,
       });
 
-      final response = await http.post(
-        Uri.parse(_apiUrl),
-        headers: headers,
-        body: body,
-      );
+      print('Sending request to OpenRouter API...'); // Debug log
+      final response = await http
+          .post(Uri.parse(_apiUrl), headers: headers, body: body)
+          .timeout(const Duration(seconds: 30)); // Add timeout
+
+      print('Response status code: ${response.statusCode}'); // Debug log
+      print('Response body: ${response.body}'); // Debug log
 
       if (response.statusCode == 200) {
-        final jsonResponse = jsonDecode(response.body);
-        // Assuming the response structure is similar to OpenAI chat completions
-        final aiResponse = jsonResponse['choices'][0]['message']['content'];
-        setState(() {
-          chatMessages.add({'role': 'assistant', 'content': aiResponse});
-        });
-      } else {
-        // Handle non-200 status codes
-        print('API Error: ${response.statusCode}');
-        print('API Error Body: ${response.body}');
-        setState(() {
-          chatMessages.add({
-            'role': 'assistant',
-            'content': 'Error: Failed to get response from AI.',
+        try {
+          final jsonResponse = jsonDecode(response.body);
+          if (jsonResponse['choices'] != null &&
+              jsonResponse['choices'].isNotEmpty &&
+              jsonResponse['choices'][0]['message'] != null) {
+            final aiResponse = jsonResponse['choices'][0]['message']['content'];
+            setState(() {
+              chatMessages.add({'role': 'assistant', 'content': aiResponse});
+            });
+          } else {
+            throw Exception('Invalid response format from AI service');
+          }
+        } catch (e) {
+          print('Error parsing AI response: $e');
+          setState(() {
+            chatMessages.add({
+              'role': 'assistant',
+              'content':
+                  'Error: Received invalid response from AI service. Please try again.',
+            });
           });
+        }
+      } else {
+        String errorMessage = 'Error: Failed to get response from AI.';
+        try {
+          final errorJson = jsonDecode(response.body);
+          if (errorJson['error'] != null) {
+            errorMessage =
+                'Error: ${errorJson['error']['message'] ?? errorMessage}';
+          }
+        } catch (e) {
+          print('Error parsing error response: $e');
+        }
+
+        print('API Error: ${response.statusCode} - $errorMessage');
+        setState(() {
+          chatMessages.add({'role': 'assistant', 'content': errorMessage});
         });
       }
+    } on TimeoutException {
+      print('Request timed out');
+      setState(() {
+        chatMessages.add({
+          'role': 'assistant',
+          'content':
+              'Error: Request timed out. Please check your internet connection and try again.',
+        });
+      });
     } catch (e) {
-      // Handle network or other errors
       print('Error sending message to API: $e');
       setState(() {
         chatMessages.add({
           'role': 'assistant',
-          'content': 'Error: Could not connect to the AI service.',
+          'content':
+              'Error: Could not connect to the AI service. Please check your internet connection and try again.',
         });
       });
     } finally {
